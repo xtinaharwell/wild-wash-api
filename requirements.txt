@@ -1,1 +1,22 @@
 Django==4.1.3
+djangorestframework
+django-cors-headers
+djangorestframework-simplejwt
+django-environ
+python-dotenv
+psycopg2-binary
+pillow
+requests
+django-filter
+whitenoise
+gunicorn
+
+# async / realtime / background tasks
+channels
+channels-redis
+celery
+redis
+django-celery-beat
+
+# storage (optional, if you use S3)
+django-storages[boto3]
