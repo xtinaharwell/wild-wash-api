@@ -1,75 +1,78 @@
 # orders/serializers.py
 from rest_framework import serializers
-from django.conf import settings
 from .models import Order
-from services.serializers import ServiceSerializer
 from services.models import Service
-from django.contrib.auth import get_user_model
-
-User = get_user_model()
-
-
-class SimpleUserSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = User
-        fields = ["id", "username", "first_name", "last_name", "phone"]
-
-
-class OrderSerializer(serializers.ModelSerializer):
-    user = SimpleUserSerializer(read_only=True)
-    service = ServiceSerializer(read_only=True)
-    service_id = serializers.PrimaryKeyRelatedField(
-        queryset=Service.objects.all(), write_only=True, source="service"
-    )
-
-    assigned_rider = SimpleUserSerializer(read_only=True)
-
-    class Meta:
-        model = Order
-        fields = [
-            "id",
-            "user",
-            "service",
-            "service_id",
-            "pickup_address",
-            "dropoff_address",
-            "status",
-            "urgency",
-            "estimated_delivery",
-            "created_at",
-            "updated_at",
-            "assigned_rider",
-        ]
-        read_only_fields = ["id", "user", "created_at", "updated_at", "assigned_rider"]
-
+from decimal import Decimal
+from django.utils import timezone
 
 class OrderCreateSerializer(serializers.ModelSerializer):
-    service_id = serializers.PrimaryKeyRelatedField(
-        queryset=Service.objects.all(), write_only=True, source="service"
-    )
+    # accept service as ID (FK), and return service name in read serializer
+    class Meta:
+        model = Order
+        fields = [
+            'id',
+            'service',           # expects service id
+            'pickup_address',
+            'dropoff_address',
+            'urgency',
+            'items',
+            'package',
+            'weight_kg',
+            'price',
+            'estimated_delivery',
+        ]
+        read_only_fields = ['id']
+
+    def validate_service(self, value):
+        # ensure service exists (DRF will check FK, but you can add checks)
+        if not Service.objects.filter(pk=value.id if hasattr(value, 'id') else value).exists():
+            raise serializers.ValidationError("Invalid service")
+        return value
+
+    def create(self, validated_data):
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        # Create order but leave code empty for now (we'll set it after saving)
+        order = Order.objects.create(user=user, **validated_data)
+        # generate human-friendly code like WW-00001
+        order.code = f"WW-{order.id:05d}"
+        order.save(update_fields=['code'])
+        return order
+
+
+class OrderListSerializer(serializers.ModelSerializer):
+    package = serializers.SerializerMethodField()
+    price_display = serializers.SerializerMethodField()
+    status = serializers.CharField(source='get_status_display')  # human-readable label
 
     class Meta:
         model = Order
         fields = [
-            "id",
-            "service_id",
-            "pickup_address",
-            "dropoff_address",
-            "urgency",
-            # any additional fields like 'notes' can be added
+            'id',
+            'code',
+            'created_at',
+            'items',
+            'weight_kg',
+            'package',
+            'price',
+            'price_display',
+            'status',
+            'estimated_delivery',
+            'delivered_at',
         ]
-        read_only_fields = ["id"]
 
-    def create(self, validated_data):
-        request = self.context.get("request")
-        user = getattr(request, "user", None)
-        if user is None or not user.is_authenticated:
-            raise serializers.ValidationError("Authentication required to create an order.")
-        validated_data["user"] = user
-        return super().create(validated_data)
+    def get_package(self, obj):
+        return getattr(obj.service, 'name', f"Package {obj.package}")
 
-
-class OrderStatusUpdateSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Order
-        fields = ["status", "estimated_delivery"]
+    def get_price_display(self, obj):
+        if obj.price is None:
+            return ""
+        # format price nicely; adapt to your locale/requirements
+        try:
+            p = Decimal(obj.price)
+            # If whole number show without decimals:
+            if p == p.to_integral():
+                return f"KSh {int(p):,}"
+            return f"KSh {p:,}"
+        except Exception:
+            return str(obj.price)
