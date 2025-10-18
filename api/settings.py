@@ -157,5 +157,8 @@ CSRF_TRUSTED_ORIGINS = [
 CORS_ALLOWED_ORIGINS = [
     "https://9000-firebase-wildwashgit-1760698481871.cluster-ikslh4rdsnbqsvu5nw3v4dqjj2.cloudworkstations.dev",
     "https://wildwosh.kibeezy.com",
+    "https://wildwash.kibeezy.com",      
 ]
 CORS_ALLOW_CREDENTIALS = True
+
+  
