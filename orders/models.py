@@ -3,6 +3,7 @@ from django.db import models
 from django.conf import settings
 from services.models import Service
 from decimal import Decimal
+import uuid
 
 class Order(models.Model):
     STATUS_CHOICES = [
@@ -30,11 +31,13 @@ class Order(models.Model):
     estimated_delivery = models.DateTimeField(null=True, blank=True)
     delivered_at = models.DateTimeField(null=True, blank=True)  # helpful to record real delivery time
 
+
+
     def save(self, *args, **kwargs):
-        # generate code if missing (simple example)
         if not self.code:
-            self.code = f"WW-{self.pk or 'TEMP'}"
+            self.code = f"WW-{uuid.uuid4().hex[:6].upper()}"
         super().save(*args, **kwargs)
+
 
     def __str__(self):
         return f"Order #{self.id} - {self.user.username}"
