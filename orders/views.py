@@ -5,8 +5,8 @@ from .serializers import OrderListSerializer, OrderCreateSerializer
 
 class OrderListCreateView(generics.ListCreateAPIView):
     """
-    GET  -> list orders (OrderListSerializer)
-    POST -> create order (OrderCreateSerializer)
+    GET  -> list orders (public)
+    POST -> create order (public; anonymous orders assigned to guest user)
     """
     queryset = Order.objects.all().order_by("-created_at")
     permission_classes = [permissions.AllowAny]

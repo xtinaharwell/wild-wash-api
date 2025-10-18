@@ -1,18 +1,21 @@
 # orders/serializers.py
 from rest_framework import serializers
+from django.contrib.auth import get_user_model
 from .models import Order
 from services.models import Service
 from decimal import Decimal
 
+User = get_user_model()
+
 class OrderCreateSerializer(serializers.ModelSerializer):
-    # explicitly accept service as PK (integer) and let DRF convert it to a Service instance
+    # accept service as PK -> DRF will convert to Service instance
     service = serializers.PrimaryKeyRelatedField(queryset=Service.objects.all())
 
     class Meta:
         model = Order
         fields = [
             "id",
-            "service",           # expects service id (PK)
+            "service",
             "pickup_address",
             "dropoff_address",
             "urgency",
@@ -25,21 +28,39 @@ class OrderCreateSerializer(serializers.ModelSerializer):
         read_only_fields = ["id"]
 
     def validate(self, data):
-        """
-        Example validations:
-        - pickup_address required if pickup contact provided
-        - ensure items is positive
-        """
+        # basic sanity defaults / checks
         if data.get("items") is None:
             data["items"] = 1
         if data.get("items", 0) < 1:
             raise serializers.ValidationError({"items": "Must be at least 1"})
-        # allow null weight and price (backend can compute)
+        # allow weight_kg and price to be null for backend calculation
         return data
 
     def create(self, validated_data):
+        """
+        Attach order to:
+         - request.user if authenticated, else
+         - a single guest user (created if missing).
+        """
         request = self.context.get("request")
         user = getattr(request, "user", None)
+
+        # If the incoming request is from an anonymous user, attach to guest user.
+        if not (user and getattr(user, "is_authenticated", False)):
+            guest_username = "guest_orders"           # choose a unique username
+            guest_email = "guest@wildwash.local"
+            guest_user, created = User.objects.get_or_create(
+                username=guest_username,
+                defaults={"email": guest_email, "is_active": False},
+            )
+            if created:
+                # Make sure the account cannot be used to login
+                guest_user.set_unusable_password()
+                guest_user.save()
+
+            user = guest_user
+
+        # Create the order and set the human-friendly code afterwards
         order = Order.objects.create(user=user, **validated_data)
         order.code = f"WW-{order.id:05d}"
         order.save(update_fields=["code"])

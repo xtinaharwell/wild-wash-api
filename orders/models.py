@@ -15,7 +15,14 @@ class Order(models.Model):
         ('cancelled', 'Cancelled'),    # add cancelled to match frontend
     ]
 
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,            # allow null
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="orders",
+    )
+
     service = models.ForeignKey(Service, on_delete=models.CASCADE)
     code = models.CharField(max_length=32, unique=True, blank=True)  # e.g. "WW-12345"
     pickup_address = models.TextField()
