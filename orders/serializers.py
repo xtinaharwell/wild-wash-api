@@ -44,6 +44,8 @@ class OrderListSerializer(serializers.ModelSerializer):
     package = serializers.SerializerMethodField()
     price_display = serializers.SerializerMethodField()
     status = serializers.CharField(source='get_status_display')  # human-readable label
+    service_name = serializers.CharField(source='service.name', read_only=True)
+    user = serializers.CharField(source='user.username', read_only=True)  # optional
 
     class Meta:
         model = Order
@@ -51,6 +53,11 @@ class OrderListSerializer(serializers.ModelSerializer):
             'id',
             'code',
             'created_at',
+            'user',               # ✅ add this if you want user data
+            'service_name',       # ✅ service readable name
+            'pickup_address',     # ✅ missing before
+            'dropoff_address',    # ✅ missing before
+            'urgency',            # ✅ if you want it displayed
             'items',
             'weight_kg',
             'package',
@@ -67,10 +74,8 @@ class OrderListSerializer(serializers.ModelSerializer):
     def get_price_display(self, obj):
         if obj.price is None:
             return ""
-        # format price nicely; adapt to your locale/requirements
         try:
             p = Decimal(obj.price)
-            # If whole number show without decimals:
             if p == p.to_integral():
                 return f"KSh {int(p):,}"
             return f"KSh {p:,}"
