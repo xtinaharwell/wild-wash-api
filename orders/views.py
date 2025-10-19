@@ -5,11 +5,18 @@ from .serializers import OrderListSerializer, OrderCreateSerializer
 
 class OrderListCreateView(generics.ListCreateAPIView):
     """
-    GET  -> list orders (public)
-    POST -> create order (public; anonymous orders assigned to guest user)
+    GET  -> list orders (can filter by ?code=WW-12345)
+    POST -> create order (anonymous allowed)
     """
     queryset = Order.objects.all().order_by("-created_at")
     permission_classes = [permissions.AllowAny]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        code = self.request.query_params.get("code")
+        if code:
+            queryset = queryset.filter(code__iexact=code.strip())
+        return queryset
 
     def get_serializer_class(self):
         if self.request.method == "POST":
