@@ -1,11 +1,12 @@
 # riders/serializers.py
 from rest_framework import serializers
-from .models import RiderLocation
+from django.contrib.auth import get_user_model
+from .models import RiderLocation, RiderProfile
+
+User = get_user_model()
 
 class RiderLocationSerializer(serializers.ModelSerializer):
-    # returns rider id (or username if you prefer)
     rider = serializers.SerializerMethodField()
-    # friendlier display name for UI
     rider_display = serializers.SerializerMethodField()
 
     class Meta:
@@ -24,14 +25,47 @@ class RiderLocationSerializer(serializers.ModelSerializer):
         ]
 
     def get_rider(self, obj):
-        # return a simple identifier (id). You can return username or nested object if you want.
-        user = getattr(obj, "rider", None)
-        return getattr(user, "id", None)
+        return getattr(obj.rider, "id", None)
 
     def get_rider_display(self, obj):
         user = getattr(obj, "rider", None)
-        # Prefer RiderProfile.display_name if available, otherwise username
         profile = getattr(user, "rider_profile", None)
         if profile and getattr(profile, "display_name", ""):
             return profile.display_name
         return getattr(user, "username", None)
+
+
+class RiderProfileSerializer(serializers.ModelSerializer):
+    """
+    Serializer for RiderProfile. Exposes the related user's username,
+    and file URLs for id/license documents.
+    """
+    user = serializers.CharField(source="user.username", read_only=True)
+    id_document = serializers.FileField(read_only=True)
+    license_document = serializers.FileField(read_only=True)
+
+    class Meta:
+        model = RiderProfile
+        fields = [
+            "id",
+            "user",
+            "display_name",
+            "phone",
+            "vehicle_type",
+            "vehicle_reg",
+            "is_active",
+            "rating",
+            "completed_jobs",
+            "id_document",
+            "license_document",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "id",
+            "user",
+            "rating",
+            "completed_jobs",
+            "created_at",
+            "updated_at",
+        ]

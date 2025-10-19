@@ -1,9 +1,10 @@
 # riders/views.py
-from rest_framework import viewsets, permissions
+from rest_framework import viewsets, permissions, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from .models import RiderLocation
-from .serializers import RiderLocationSerializer
+from .models import RiderLocation, RiderProfile
+from .serializers import RiderLocationSerializer, RiderProfileSerializer
+
 
 class RiderLocationViewSet(viewsets.ModelViewSet):
     """Private viewset: riders push GPS updates. Auth required for create/update."""
@@ -29,23 +30,32 @@ class PublicRiderLocationsView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def get(self, request, *args, **kwargs):
-        # load recent locations ordered by recorded_at desc
         qs = RiderLocation.objects.all().order_by("-recorded_at", "-created_at")
-
-        # choose latest per rider in Python (works on any DB)
         latest_by_rider = {}
         for loc in qs:
             rider_id = getattr(loc, "rider_id", None)
-            if rider_id is None:
-                # include anonymous / unknown rider rows if any
-                # use a unique key for these
-                rider_key = f"anon-{loc.id}"
-            else:
-                rider_key = str(rider_id)
+            rider_key = f"anon-{loc.id}" if rider_id is None else str(rider_id)
             if rider_key not in latest_by_rider:
                 latest_by_rider[rider_key] = loc
 
         latest_list = list(latest_by_rider.values())
-
         serializer = RiderLocationSerializer(latest_list, many=True, context={"request": request})
         return Response(serializer.data)
+
+
+class RiderProfileViewSet(viewsets.ModelViewSet):
+    """
+    Read (public) access to rider profiles. Creation/updates/deletes restricted to admin.
+    Routes:
+      - GET /riders/profiles/         -> list
+      - GET /riders/profiles/<pk>/    -> retrieve
+      - POST/PUT/PATCH/DELETE         -> admin only
+    """
+    queryset = RiderProfile.objects.select_related("user").all().order_by("-created_at")
+    serializer_class = RiderProfileSerializer
+
+    def get_permissions(self):
+        # Public read access, admin required for write
+        if self.action in ["list", "retrieve"]:
+            return [permissions.AllowAny()]
+        return [permissions.IsAdminUser()]

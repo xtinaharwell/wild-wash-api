@@ -1,14 +1,17 @@
 # riders/urls.py
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import RiderLocationViewSet, PublicRiderLocationsView
+from .views import RiderLocationViewSet, PublicRiderLocationsView, RiderProfileViewSet
 
 router = DefaultRouter()
+# authenticated CRUD for locations (used by rider device / admin)
 router.register(r'locations', RiderLocationViewSet, basename='rider-location')
+# profiles (public read, admin write)
+router.register(r'profiles', RiderProfileViewSet, basename='rider-profile')
 
 urlpatterns = [
-    # Public listing (latest per rider) at /riders/
+    # public latest locations: GET /riders/
     path("", PublicRiderLocationsView.as_view(), name="rider-latest"),
-    # Authenticated CRUD for locations (devices/admin) at /riders/locations/
-    path("locations/", include(router.urls)),
+    # include viewset routes at /riders/
+    path("", include(router.urls)),
 ]
