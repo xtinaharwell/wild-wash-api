@@ -9,6 +9,15 @@ from .serializers import UserSerializer, UserCreateSerializer, ChangePasswordSer
 
 User = get_user_model()
 
+from django.http import JsonResponse
+from django.views.decorators.csrf import ensure_csrf_cookie
+
+@ensure_csrf_cookie
+def get_csrf(request):
+    # ensure_csrf_cookie will set the csrftoken cookie in the response headers
+    return JsonResponse({"detail": "csrf cookie set"})
+
+
 class UserViewSet(viewsets.ModelViewSet):
     """
     Admin-friendly user viewset. Regular users can retrieve/update their own profile using the `me` action.

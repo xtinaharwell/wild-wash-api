@@ -159,7 +159,7 @@ CSRF_TRUSTED_ORIGINS = [
 CSRF_COOKIE_DOMAIN = ".kibeezy.com"      # optional — only if frontend/backend are subdomains
 CSRF_COOKIE_SECURE = True                # recommended for production (HTTPS)
 CSRF_COOKIE_SAMESITE = "None"            # needed if frontend is on a different domain/subdomain
-
+CSRF_COOKIE_HTTPONLY = False
 
 
 
