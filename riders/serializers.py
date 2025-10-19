@@ -1,49 +1,19 @@
 # riders/serializers.py
 from rest_framework import serializers
-from .models import RiderProfile, RiderLocation
-from django.contrib.auth import get_user_model
-
-User = get_user_model()
-
-
-class RiderProfileSerializer(serializers.ModelSerializer):
-    user = serializers.PrimaryKeyRelatedField(read_only=True)
-
-    class Meta:
-        model = RiderProfile
-        fields = [
-            "id",
-            "user",
-            "display_name",
-            "phone",
-            "vehicle_type",
-            "vehicle_reg",
-            "is_active",
-            "id_document",
-            "license_document",
-            "rating",
-            "completed_jobs",
-            "created_at",
-            "updated_at",
-        ]
-        read_only_fields = ["id", "rating", "completed_jobs", "created_at", "updated_at"]
-
-    def create(self, validated_data):
-        # if you want to auto-attach the logged-in user:
-        request = self.context.get("request")
-        if request and getattr(request, "user", None):
-            validated_data["user"] = request.user
-        return super().create(validated_data)
-
+from .models import RiderLocation
 
 class RiderLocationSerializer(serializers.ModelSerializer):
-    rider = serializers.PrimaryKeyRelatedField(read_only=True)
+    # returns rider id (or username if you prefer)
+    rider = serializers.SerializerMethodField()
+    # friendlier display name for UI
+    rider_display = serializers.SerializerMethodField()
 
     class Meta:
         model = RiderLocation
         fields = [
             "id",
             "rider",
+            "rider_display",
             "latitude",
             "longitude",
             "accuracy",
@@ -52,10 +22,16 @@ class RiderLocationSerializer(serializers.ModelSerializer):
             "recorded_at",
             "created_at",
         ]
-        read_only_fields = ["id", "rider", "created_at"]
 
-    def create(self, validated_data):
-        request = self.context.get("request")
-        if request and getattr(request, "user", None):
-            validated_data["rider"] = request.user
-        return super().create(validated_data)
+    def get_rider(self, obj):
+        # return a simple identifier (id). You can return username or nested object if you want.
+        user = getattr(obj, "rider", None)
+        return getattr(user, "id", None)
+
+    def get_rider_display(self, obj):
+        user = getattr(obj, "rider", None)
+        # Prefer RiderProfile.display_name if available, otherwise username
+        profile = getattr(user, "rider_profile", None)
+        if profile and getattr(profile, "display_name", ""):
+            return profile.display_name
+        return getattr(user, "username", None)
