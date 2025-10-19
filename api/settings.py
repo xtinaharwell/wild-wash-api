@@ -150,8 +150,17 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 
 CSRF_TRUSTED_ORIGINS = [
+    "https://wildwash.kibeezy.com",
+    "https://wildwosh.kibeezy.com",  
     "https://8000-firebase-wild-wash-apigit-1760697854679.cluster-lu4mup47g5gm4rtyvhzpwbfadi.cloudworkstations.dev",
 ]
+
+# If you want the CSRF cookie visible across subdomains of kibeezy.com:
+CSRF_COOKIE_DOMAIN = ".kibeezy.com"      # optional — only if frontend/backend are subdomains
+CSRF_COOKIE_SECURE = True                # recommended for production (HTTPS)
+CSRF_COOKIE_SAMESITE = "None"            # needed if frontend is on a different domain/subdomain
+
+
 
 
 CORS_ALLOWED_ORIGINS = [
