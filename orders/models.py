@@ -2,6 +2,7 @@
 from django.db import models
 from django.conf import settings
 from services.models import Service
+from users.models import Location
 from decimal import Decimal
 import uuid
 
@@ -24,6 +25,14 @@ class Order(models.Model):
     )
 
     service = models.ForeignKey(Service, on_delete=models.CASCADE)
+    service_location = models.ForeignKey(
+        Location,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="orders",
+        help_text="The location where this order is being processed"
+    )
     code = models.CharField(max_length=32, unique=True, blank=True)  # e.g. "WW-12345"
     pickup_address = models.TextField()
     dropoff_address = models.TextField()

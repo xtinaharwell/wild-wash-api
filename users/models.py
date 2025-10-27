@@ -1,15 +1,42 @@
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 
+class Location(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+    description = models.TextField(blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.name
+
+    class Meta:
+        ordering = ['name']
+
 class User(AbstractUser):
     ROLE_CHOICES = (
         ("customer", "Customer"),
         ("rider", "Rider"),
         ("admin", "Admin"),
+        ("staff", "Staff"),
     )
 
-    phone = models.CharField(max_length=20, blank=True, null=True)
+    phone = models.CharField(max_length=20)  # Required phone number
+    service_location = models.ForeignKey(
+        Location, 
+        on_delete=models.SET_NULL,
+        null=True, 
+        blank=True,
+        related_name='staff_members',
+        help_text="Location where staff member works"
+    )
+    # Customer's address/location
+    location = models.CharField(max_length=100, blank=True, null=True)
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default="customer")
+    is_location_admin = models.BooleanField(
+        default=False,
+        help_text="Designates whether this user can manage other users in their location"
+    )
 
     def __str__(self):
         return f"{self.username} ({self.role})"

@@ -30,7 +30,7 @@ SECRET_KEY = 'django-insecure-=cldztbc4jg&xl0!x673!*v2_=p$$eu)=7*f#d0#zs$44xx-h^
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['127.0.0.1', '.vercel.app', 'wildwosh.kibeezy.com', 'https://8000-firebase-wild-wash-apigit-1760697854679.cluster-lu4mup47g5gm4rtyvhzpwbfadi.cloudworkstations.dev', 'wildwash.kibeezy.com']
+ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '.vercel.app', 'wildwosh.kibeezy.com', 'https://8000-firebase-wild-wash-apigit-1760697854679.cluster-lu4mup47g5gm4rtyvhzpwbfadi.cloudworkstations.dev', 'wildwash.kibeezy.com']
 
 
 # Application definition
@@ -50,6 +50,7 @@ INSTALLED_APPS = [
     'payments',
     'riders',
     'rest_framework',
+    'rest_framework.authtoken',
     'corsheaders',
 
 ]
@@ -150,24 +151,38 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 
 CSRF_TRUSTED_ORIGINS = [
+    "https://wildwosh.kibeezy.com",
+    "https://127.0.0.1:8000",
     "https://wildwash.kibeezy.com",
     "https://wildwosh.kibeezy.com",  
     "https://8000-firebase-wild-wash-apigit-1760697854679.cluster-lu4mup47g5gm4rtyvhzpwbfadi.cloudworkstations.dev",
 ]
 
-# If you want the CSRF cookie visible across subdomains of kibeezy.com:
-CSRF_COOKIE_DOMAIN = ".kibeezy.com"      # optional — only if frontend/backend are subdomains
-CSRF_COOKIE_SECURE = True                # recommended for production (HTTPS)
-CSRF_COOKIE_SAMESITE = "None"            # needed if frontend is on a different domain/subdomain
+# CSRF settings
+CSRF_COOKIE_DOMAIN = None      # Set to None for local development
+CSRF_COOKIE_SECURE = False    # Set to False for local development
+CSRF_COOKIE_SAMESITE = "Lax"  # Set to Lax for local development
 CSRF_COOKIE_HTTPONLY = False
+CSRF_USE_SESSIONS = True     # Store CSRF token in session instead of cookie
 
 
 
 CORS_ALLOWED_ORIGINS = [
     "https://9000-firebase-wildwashgit-1760698481871.cluster-ikslh4rdsnbqsvu5nw3v4dqjj2.cloudworkstations.dev",
     "https://wildwosh.kibeezy.com",
-    "https://wildwash.kibeezy.com",      
+    "https://wildwash.kibeezy.com",
+    "https://wildwosh.kibeezy.com",      
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
 ]
 CORS_ALLOW_CREDENTIALS = True
 
-  
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.TokenAuthentication',
+        'rest_framework.authentication.SessionAuthentication',
+    ],
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated',
+    ],
+}

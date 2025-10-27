@@ -2,10 +2,15 @@ from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from django.contrib.auth import get_user_model
+from django.contrib.auth import get_user_model, authenticate
 from rest_framework.authtoken.models import Token
 
-from .serializers import UserSerializer, UserCreateSerializer, ChangePasswordSerializer
+from .serializers import (
+    UserSerializer, UserCreateSerializer, ChangePasswordSerializer,
+    LocationSerializer, StaffCreateSerializer
+)
+from .models import Location
+from .permissions import LocationBasedPermission
 
 User = get_user_model()
 
@@ -18,9 +23,29 @@ def get_csrf(request):
     return JsonResponse({"detail": "csrf cookie set"})
 
 
+class UserProfileView(APIView):
+    """
+    View for handling the current user's profile
+    """
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = UserSerializer
+
+    def get(self, request):
+        """Get the current user's profile"""
+        serializer = self.serializer_class(request.user)
+        return Response(serializer.data)
+
+    def patch(self, request):
+        """Update the current user's profile"""
+        serializer = self.serializer_class(request.user, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+
 class UserViewSet(viewsets.ModelViewSet):
     """
-    Admin-friendly user viewset. Regular users can retrieve/update their own profile using the `me` action.
+    Admin-friendly user viewset for managing all users.
     """
     queryset = User.objects.all()
     serializer_class = UserSerializer
@@ -36,17 +61,6 @@ class UserViewSet(viewsets.ModelViewSet):
         if self.action == 'create':
             return UserCreateSerializer
         return UserSerializer
-
-    @action(detail=False, methods=['get', 'patch'], url_path='me')
-    def me(self, request):
-        """Get or update the current user's profile."""
-        if request.method == 'GET':
-            serializer = self.get_serializer(request.user)
-            return Response(serializer.data)
-        serializer = self.get_serializer(request.user, data=request.data, partial=True)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        return Response(serializer.data)
 
 
 class LoginView(APIView):
@@ -76,3 +90,77 @@ class ChangePasswordView(APIView):
         user.set_password(serializer.validated_data['new_password'])
         user.save()
         return Response({'status': 'password set'})
+
+
+class RegisterView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        serializer = UserCreateSerializer(data=request.data)
+        if serializer.is_valid():
+            user = serializer.save()
+            return Response(UserSerializer(user).data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class LocationViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing service locations.
+    Only superusers can create/update/delete locations.
+    Staff can view their assigned location.
+    """
+    queryset = Location.objects.all()
+    serializer_class = LocationSerializer
+    permission_classes = [LocationBasedPermission]
+
+    def get_permissions(self):
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            return [permissions.IsAdminUser()]
+        return super().get_permissions()
+
+
+class StaffLoginView(APIView):
+    """
+    Special login view for staff members that checks their location assignment
+    """
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        username = request.data.get('username')
+        password = request.data.get('password')
+        user = authenticate(request, username=username, password=password)
+
+        if not user or not user.is_staff:
+            return Response(
+                {'detail': 'Invalid credentials or not a staff member'}, 
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+        if not user.service_location:
+            return Response(
+                {'detail': 'No location assigned'}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        token, _ = Token.objects.get_or_create(user=user)
+        return Response({
+            'token': token.key,
+            'user': UserSerializer(user).data
+        })
+
+
+class StaffViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing staff members.
+    Only superusers can access this ViewSet.
+    """
+    queryset = User.objects.filter(is_staff=True)
+    serializer_class = StaffCreateSerializer
+    permission_classes = [permissions.IsAdminUser]
+
+    def get_queryset(self):
+        return User.objects.filter(is_staff=True).exclude(is_superuser=True)
+
+    def perform_create(self, serializer):
+        user = serializer.save(is_staff=True)
+        return user

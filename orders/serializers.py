@@ -3,6 +3,7 @@ from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from .models import Order
 from services.models import Service
+from users.models import Location
 from decimal import Decimal
 
 User = get_user_model()
@@ -10,12 +11,17 @@ User = get_user_model()
 class OrderCreateSerializer(serializers.ModelSerializer):
     # accept service as PK -> DRF will convert to Service instance
     service = serializers.PrimaryKeyRelatedField(queryset=Service.objects.all())
+    service_location = serializers.PrimaryKeyRelatedField(
+        queryset=Location.objects.filter(is_active=True),
+        required=False
+    )
 
     class Meta:
         model = Order
         fields = [
             "id",
             "service",
+            "service_location",
             "pickup_address",
             "dropoff_address",
             "urgency",
@@ -73,6 +79,7 @@ class OrderListSerializer(serializers.ModelSerializer):
     status = serializers.CharField(source="get_status_display")
     service_name = serializers.CharField(source="service.name", read_only=True)
     user = serializers.CharField(source="user.username", read_only=True)
+    service_location_name = serializers.CharField(source="service_location.name", read_only=True)
 
     class Meta:
         model = Order
@@ -82,6 +89,7 @@ class OrderListSerializer(serializers.ModelSerializer):
             "created_at",
             "user",
             "service_name",
+            "service_location_name",
             "pickup_address",
             "dropoff_address",
             "urgency",
