@@ -151,7 +151,6 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 
 CSRF_TRUSTED_ORIGINS = [
-    "https://wildwosh.kibeezy.com",
     "https://127.0.0.1:8000",
     "https://wildwash.kibeezy.com",
     "https://wildwosh.kibeezy.com",  
@@ -170,8 +169,7 @@ CSRF_USE_SESSIONS = True     # Store CSRF token in session instead of cookie
 CORS_ALLOWED_ORIGINS = [
     "https://9000-firebase-wildwashgit-1760698481871.cluster-ikslh4rdsnbqsvu5nw3v4dqjj2.cloudworkstations.dev",
     "https://wildwosh.kibeezy.com",
-    "https://wildwash.kibeezy.com",
-    "https://wildwosh.kibeezy.com",      
+    "https://wildwash.kibeezy.com",   
     "http://localhost:3000",
     "http://127.0.0.1:3000",
 ]

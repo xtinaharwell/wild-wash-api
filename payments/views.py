@@ -4,8 +4,12 @@ from rest_framework.decorators import action
 from .models import BNPLUser
 from .serializers import BNPLUserSerializer
 
+from rest_framework.authentication import TokenAuthentication
+from rest_framework.permissions import IsAuthenticated
+
 class BNPLViewSet(viewsets.GenericViewSet):
-    permission_classes = [permissions.IsAuthenticated]
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
     serializer_class = BNPLUserSerializer
 
     def get_queryset(self):
