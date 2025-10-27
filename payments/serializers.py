@@ -1,6 +1,6 @@
 # payments/serializers.py
 from rest_framework import serializers
-from .models import Payment, MpesaSTKRequest
+from .models import Payment, MpesaSTKRequest, BNPLUser
 from django.contrib.auth import get_user_model
 
 User = get_user_model()
@@ -42,6 +42,22 @@ class PaymentCreateSerializer(serializers.ModelSerializer):
         user = getattr(request, "user", None)
         payment = Payment.objects.create(user=user, **validated_data)
         return payment
+
+
+class BNPLUserSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = BNPLUser
+        fields = [
+            'id',
+            'user',
+            'is_active',
+            'phone_number',
+            'credit_limit',
+            'current_balance',
+            'created_at',
+            'updated_at'
+        ]
+        read_only_fields = ['id', 'user', 'credit_limit', 'current_balance', 'created_at', 'updated_at']
 
 
 class MpesaSTKRequestSerializer(serializers.ModelSerializer):

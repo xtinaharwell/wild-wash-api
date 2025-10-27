@@ -49,10 +49,10 @@ INSTALLED_APPS = [
     'notifications',
     'payments',
     'riders',
+    'offers',
     'rest_framework',
     'rest_framework.authtoken',
     'corsheaders',
-
 ]
 
 MIDDLEWARE = [

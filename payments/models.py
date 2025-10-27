@@ -78,6 +78,24 @@ class Payment(models.Model):
         self.save(update_fields=['status', 'completed_at', 'raw_payload', 'notes', 'updated_at'])
 
 
+class BNPLUser(models.Model):
+    """Tracks users who have opted in for Buy Now, Pay Later."""
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='bnpl')
+    is_active = models.BooleanField(default=True)
+    phone_number = models.CharField(max_length=32)
+    credit_limit = models.DecimalField(max_digits=10, decimal_places=2, default=5000.00)
+    current_balance = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"BNPL - {self.user.username}"
+
+    class Meta:
+        verbose_name = "BNPL User"
+        verbose_name_plural = "BNPL Users"
+
+
 class MpesaSTKRequest(models.Model):
     """Tracks an STK Push request lifecycle with Daraja (M-Pesa).
 
