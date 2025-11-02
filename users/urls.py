@@ -7,7 +7,7 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     UserViewSet, LoginView, ChangePasswordView, 
     get_csrf, RegisterView, UserProfileView,
-    LocationViewSet, StaffViewSet, StaffLoginView
+    LocationViewSet, StaffViewSet, StaffLoginView, AdminLoginView
 )
 
 router = DefaultRouter()
@@ -20,7 +20,8 @@ urlpatterns = [
     path('', include(router.urls)),
     path('register/', RegisterView.as_view(), name='register'),
     path('login/', LoginView.as_view(), name='login'),
-    path('staff-login/', StaffLoginView.as_view(), name='staff-login'),
+    path('staff/login/', StaffLoginView.as_view(), name='staff-login'),
+    path('admin/login/', AdminLoginView.as_view(), name='admin-login'),
     path('change-password/', ChangePasswordView.as_view(), name='change-password'),
     path('csrf/', get_csrf, name='csrf'),
 ]
