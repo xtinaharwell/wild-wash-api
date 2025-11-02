@@ -46,7 +46,13 @@ class Order(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     estimated_delivery = models.DateTimeField(null=True, blank=True)
     delivered_at = models.DateTimeField(null=True, blank=True)  # helpful to record real delivery time
-
+    rider = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="assigned_orders",
+    )
 
 
     def save(self, *args, **kwargs):

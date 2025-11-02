@@ -6,6 +6,19 @@ from .models import Order
 from .serializers import OrderListSerializer, OrderCreateSerializer
 from users.permissions import LocationBasedPermission
 
+class RiderOrderListView(generics.ListAPIView):
+    """
+    GET -> List orders assigned to the authenticated rider
+    """
+    serializer_class = OrderListSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return Order.objects.filter(
+            rider=self.request.user,
+            status__in=['picked', 'in_progress', 'delivered']
+        ).order_by('-created_at')
+
 class OrderUpdateView(APIView):
     """
     PATCH -> Update order status

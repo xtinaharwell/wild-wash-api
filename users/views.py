@@ -154,17 +154,10 @@ class StaffLoginView(APIView):
         username = request.data.get('username')
         password = request.data.get('password')
         user = authenticate(request, username=username, password=password)
-
         if not user or not user.is_staff:
             return Response(
                 {'detail': 'Invalid credentials or not a staff member'}, 
                 status=status.HTTP_401_UNAUTHORIZED
-            )
-
-        if not user.service_location:
-            return Response(
-                {'detail': 'No location assigned'}, 
-                status=status.HTTP_403_FORBIDDEN
             )
 
         token, _ = Token.objects.get_or_create(user=user)
