@@ -1,4 +1,5 @@
 # orders/views.py
+from django.db import models
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -8,16 +9,44 @@ from users.permissions import LocationBasedPermission
 
 class RiderOrderListView(generics.ListAPIView):
     """
-    GET -> List orders assigned to the authenticated rider
+    GET -> List orders assigned to the authenticated rider and available orders
+    POST -> Accept an order
     """
     serializer_class = OrderListSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
+        """
+        Get both assigned and available orders for riders
+        """
         return Order.objects.filter(
-            rider=self.request.user,
-            status__in=['picked', 'in_progress', 'delivered']
-        ).order_by('-created_at')
+            # Either the order is assigned to the current rider
+            # OR it's an available order (no rider and status is requested)
+            models.Q(rider=self.request.user, status__in=['picked', 'in_progress']) |
+            models.Q(rider__isnull=True, status__in=['requested'])
+        ).select_related('user', 'service').order_by('-created_at')
+
+    def post(self, request, *args, **kwargs):
+        """Accept an order"""
+        order_id = request.data.get('order_id')
+        action = request.data.get('action', 'accept')  # 'accept' or 'reject'
+
+        try:
+            order = Order.objects.get(id=order_id, status='requested', rider__isnull=True)
+            
+            if action == 'accept':
+                order.rider = request.user
+                order.status = 'picked'
+                order.save()
+                return Response({'message': 'Order accepted successfully', 'order': OrderListSerializer(order).data})
+            else:
+                return Response({'message': 'Order rejected'})
+                
+        except Order.DoesNotExist:
+            return Response(
+                {'error': 'Order not found or already assigned'},
+                status=status.HTTP_404_NOT_FOUND
+            )
 
 class OrderUpdateView(APIView):
     """
