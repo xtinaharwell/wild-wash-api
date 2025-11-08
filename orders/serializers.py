@@ -81,8 +81,39 @@ class OrderListSerializer(serializers.ModelSerializer):
     price_display = serializers.SerializerMethodField()
     status = serializers.CharField()
     service_name = serializers.CharField(source="service.name", read_only=True)
-    user = serializers.CharField(source="user.username", read_only=True)
-    service_location_name = serializers.CharField(source="service_location.name", read_only=True)
+    user = serializers.SerializerMethodField()
+    service_location = serializers.SerializerMethodField()
+    rider = serializers.SerializerMethodField()
+
+    def get_user(self, obj):
+        if not obj.user:
+            return None
+        return {
+            'username': obj.user.username,
+            'location': obj.user.location,
+            'first_name': obj.user.first_name,
+            'last_name': obj.user.last_name,
+        }
+
+    def get_service_location(self, obj):
+        if not obj.service_location:
+            return None
+        return {
+            'id': obj.service_location.id,
+            'name': obj.service_location.name,
+        }
+
+    def get_rider(self, obj):
+        if not obj.rider:
+            return None
+        return {
+            'username': obj.rider.username,
+            'first_name': obj.rider.first_name,
+            'last_name': obj.rider.last_name,
+            'service_location': {
+                'name': obj.rider.service_location.name if obj.rider.service_location else None
+            }
+        }
 
     class Meta:
         model = Order
@@ -92,7 +123,7 @@ class OrderListSerializer(serializers.ModelSerializer):
             "created_at",
             "user",
             "service_name",
-            "service_location_name",
+            "service_location",
             "pickup_address",
             "dropoff_address",
             "urgency",
@@ -104,6 +135,7 @@ class OrderListSerializer(serializers.ModelSerializer):
             "status",
             "estimated_delivery",
             "delivered_at",
+            "rider"
         ]
 
     def get_package(self, obj):

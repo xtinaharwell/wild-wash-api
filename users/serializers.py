@@ -33,6 +33,8 @@ class StaffCreateSerializer(serializers.ModelSerializer):
 
 
 class UserSerializer(serializers.ModelSerializer):
+    service_location_display = serializers.SerializerMethodField()
+
     class Meta:
         model = User
         fields = [
@@ -44,8 +46,15 @@ class UserSerializer(serializers.ModelSerializer):
             "role",
             "location",
             "is_staff",
+            "service_location",
+            "service_location_display",
         ]
         read_only_fields = ["id", "is_staff"]
+
+    def get_service_location_display(self, obj):
+        if obj.service_location:
+            return obj.service_location.name
+        return None
 
 
 class UserCreateSerializer(serializers.ModelSerializer):

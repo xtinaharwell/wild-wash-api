@@ -121,7 +121,13 @@ class OrderListCreateView(generics.ListCreateAPIView):
         # For staff users, filter by their service location
         if user.is_authenticated and user.is_staff and not user.is_superuser:
             if user.service_location:
-                queryset = queryset.filter(service_location=user.service_location)
+                # Filter orders where either:
+                # 1. The order's service_location matches staff's service_location, or
+                # 2. The customer's location matches staff's service location area
+                queryset = queryset.filter(
+                    models.Q(service_location=user.service_location) |
+                    models.Q(user__location__icontains=user.service_location.name)
+                )
             else:
                 return Order.objects.none()
         # For regular users, show only their orders
