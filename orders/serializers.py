@@ -67,7 +67,10 @@ class OrderCreateSerializer(serializers.ModelSerializer):
             user = guest_user
 
         # Create the order and set the human-friendly code afterwards
-        order = Order.objects.create(user=user, **validated_data)
+        if 'user' not in validated_data:
+            validated_data['user'] = user
+        
+        order = Order.objects.create(**validated_data)
         order.code = f"WW-{order.id:05d}"
         order.save(update_fields=["code"])
         return order
@@ -76,7 +79,7 @@ class OrderCreateSerializer(serializers.ModelSerializer):
 class OrderListSerializer(serializers.ModelSerializer):
     package = serializers.SerializerMethodField()
     price_display = serializers.SerializerMethodField()
-    status = serializers.CharField(source="get_status_display")
+    status = serializers.CharField()
     service_name = serializers.CharField(source="service.name", read_only=True)
     user = serializers.CharField(source="user.username", read_only=True)
     service_location_name = serializers.CharField(source="service_location.name", read_only=True)

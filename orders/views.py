@@ -7,6 +7,21 @@ from .models import Order
 from .serializers import OrderListSerializer, OrderCreateSerializer
 from users.permissions import LocationBasedPermission
 
+class RequestedOrdersListView(generics.ListAPIView):
+    """
+    GET -> List all orders with status 'requested'
+    """
+    serializer_class = OrderListSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        """
+        Get all requested orders regardless of user
+        """
+        return Order.objects.filter(
+            status='requested'
+        ).select_related('user', 'service').order_by('-created_at')
+
 class RiderOrderListView(generics.ListAPIView):
     """
     GET -> List orders assigned to the authenticated rider and available orders
@@ -32,16 +47,18 @@ class RiderOrderListView(generics.ListAPIView):
         action = request.data.get('action', 'accept')  # 'accept' or 'reject'
 
         try:
-            order = Order.objects.get(id=order_id, status='requested', rider__isnull=True)
-            
+            order = Order.objects.get(
+                id=order_id,
+                rider__isnull=True,
+                status__iexact='requested'  # case-insensitive match
+            )
             if action == 'accept':
                 order.rider = request.user
-                order.status = 'picked'
+                order.status = 'in_progress'  # Change status to in_progress directly
                 order.save()
                 return Response({'message': 'Order accepted successfully', 'order': OrderListSerializer(order).data})
             else:
                 return Response({'message': 'Order rejected'})
-                
         except Order.DoesNotExist:
             return Response(
                 {'error': 'Order not found or already assigned'},
