@@ -30,7 +30,7 @@ SECRET_KEY = 'django-insecure-=cldztbc4jg&xl0!x673!*v2_=p$$eu)=7*f#d0#zs$44xx-h^
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '.vercel.app', 'wildwosh.kibeezy.com', 'https://8000-firebase-wild-wash-apigit-1760697854679.cluster-lu4mup47g5gm4rtyvhzpwbfadi.cloudworkstations.dev', 'wildwash.kibeezy.com']
+ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '.vercel.app', 'https://wildwosh.kibeezy.com', 'https://8000-firebase-wild-wash-apigit-1760697854679.cluster-lu4mup47g5gm4rtyvhzpwbfadi.cloudworkstations.dev', 'wildwash.kibeezy.com']
 
 
 # Application definition
@@ -171,7 +171,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 CSRF_TRUSTED_ORIGINS = [
     "https://127.0.0.1:8000",
     "https://wildwash.kibeezy.com",
-    "http://127.0.0.1:8001",  
+    "https://wildwosh.kibeezy.com",  
     "https://8000-firebase-wild-wash-apigit-1760697854679.cluster-lu4mup47g5gm4rtyvhzpwbfadi.cloudworkstations.dev",
 ]
 
@@ -187,7 +187,7 @@ CSRF_TRUSTED_ORIGINS = ["http://localhost:3000", "https://wildwash.kibeezy.com"]
 
 CORS_ALLOWED_ORIGINS = [
     "https://9000-firebase-wildwashgit-1760698481871.cluster-ikslh4rdsnbqsvu5nw3v4dqjj2.cloudworkstations.dev",
-    "http://127.0.0.1:8001",
+    "https://wildwosh.kibeezy.com",
     "https://wildwash.kibeezy.com",   
     "http://localhost:3000",
     "http://127.0.0.1:3000",
