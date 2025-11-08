@@ -178,9 +178,10 @@ CSRF_TRUSTED_ORIGINS = [
 # CSRF settings
 CSRF_COOKIE_DOMAIN = None      # Set to None for local development
 CSRF_COOKIE_SECURE = False    # Set to False for local development
-CSRF_COOKIE_SAMESITE = "Lax"  # Set to Lax for local development
+CSRF_COOKIE_SAMESITE = None   # Required for cross-origin requests
 CSRF_COOKIE_HTTPONLY = False
-CSRF_USE_SESSIONS = True     # Store CSRF token in session instead of cookie
+CSRF_USE_SESSIONS = False     # Don't store in session for API usage
+CSRF_TRUSTED_ORIGINS = ["http://localhost:3000", "https://wildwash.kibeezy.com"]  # Add your frontend origin
 
 
 
