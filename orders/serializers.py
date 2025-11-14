@@ -126,6 +126,8 @@ class OrderListSerializer(serializers.ModelSerializer):
     user = serializers.SerializerMethodField()
     service_location = serializers.SerializerMethodField()
     rider = serializers.SerializerMethodField()
+    pickup_location = serializers.SerializerMethodField()
+    dropoff_location = serializers.SerializerMethodField()
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -201,6 +203,24 @@ class OrderListSerializer(serializers.ModelSerializer):
                 return str(obj.price)
         return ""
 
+    def get_pickup_location(self, obj):
+        """Return pickup location coordinates if available from service_location"""
+        if obj.service_location and hasattr(obj.service_location, 'latitude') and hasattr(obj.service_location, 'longitude'):
+            return {
+                'lat': float(obj.service_location.latitude) if obj.service_location.latitude else None,
+                'lng': float(obj.service_location.longitude) if obj.service_location.longitude else None
+            }
+        return None
+
+    def get_dropoff_location(self, obj):
+        """Return dropoff location - could be user's location or another location"""
+        if obj.user and hasattr(obj.user, 'latitude') and hasattr(obj.user, 'longitude'):
+            return {
+                'lat': float(obj.user.latitude) if obj.user.latitude else None,
+                'lng': float(obj.user.longitude) if obj.user.longitude else None
+            }
+        return None
+
     class Meta:
         model = Order
         fields = [
@@ -213,6 +233,8 @@ class OrderListSerializer(serializers.ModelSerializer):
             "service_location",
             "pickup_address",
             "dropoff_address",
+            "pickup_location",
+            "dropoff_location",
             "urgency",
             "items",
             "weight_kg",
