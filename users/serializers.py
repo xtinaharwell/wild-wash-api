@@ -45,6 +45,7 @@ class UserSerializer(serializers.ModelSerializer):
             "phone",
             "role",
             "location",
+            "pickup_address",
             "is_staff",
             "service_location",
             "service_location_display",
@@ -62,7 +63,7 @@ class UserCreateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ["id", "username", "phone", "password", "first_name", "last_name", "location"]
+        fields = ["id", "username", "phone", "password", "first_name", "last_name", "location", "pickup_address"]
 
     def create(self, validated_data):
         password = validated_data.pop("password")

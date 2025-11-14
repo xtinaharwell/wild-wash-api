@@ -51,7 +51,7 @@ class RiderProfileViewSet(viewsets.ModelViewSet):
       - GET /riders/profiles/<pk>/    -> retrieve
       - POST/PUT/PATCH/DELETE         -> admin only
     """
-    queryset = RiderProfile.objects.select_related("user").all().order_by("-created_at")
+    queryset = RiderProfile.objects.select_related("user", "user__service_location").all().order_by("-created_at")
     serializer_class = RiderProfileSerializer
 
     def get_permissions(self):

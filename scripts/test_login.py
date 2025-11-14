@@ -1,7 +1,7 @@
 import requests
 import json
 
-URL = 'https://wildwosh.kibeezy.com/users/login/'
+URL = 'http://wildwash.kibeezy.com/users/login/'
 PAYLOAD = {"username": "0769760460", "password": "collins879@"}
 
 try:

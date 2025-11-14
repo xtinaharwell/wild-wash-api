@@ -1,5 +1,6 @@
 # orders/views.py
 from django.db import models
+from django.db.models import Prefetch
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -20,7 +21,7 @@ class RequestedOrdersListView(generics.ListAPIView):
         """
         return Order.objects.filter(
             status='requested'
-        ).select_related('user', 'service').order_by('-created_at')
+        ).select_related('user', 'service').prefetch_related('services', 'rider').order_by('-created_at')
 
 class RiderOrderListView(generics.ListAPIView):
     """
@@ -39,7 +40,7 @@ class RiderOrderListView(generics.ListAPIView):
             # OR it's an available order (no rider and status is requested)
             models.Q(rider=self.request.user, status__in=['picked', 'in_progress']) |
             models.Q(rider__isnull=True, status__in=['requested'])
-        ).select_related('user', 'service').order_by('-created_at')
+        ).select_related('user', 'service', 'rider', 'service_location').prefetch_related('services').order_by('-created_at')
 
     def post(self, request, *args, **kwargs):
         """Accept an order"""
@@ -112,6 +113,9 @@ class OrderListCreateView(generics.ListCreateAPIView):
     def get_queryset(self):
         queryset = super().get_queryset()
         user = self.request.user
+        
+        # Optimize queries
+        queryset = queryset.select_related('user', 'service', 'rider', 'service_location').prefetch_related('services')
         
         # Filter by order code if provided
         code = self.request.query_params.get("code")

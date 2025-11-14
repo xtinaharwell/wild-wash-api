@@ -24,7 +24,11 @@ class Order(models.Model):
         related_name="orders",
     )
 
-    service = models.ForeignKey(Service, on_delete=models.CASCADE)
+    # Support multiple services per order
+    services = models.ManyToManyField(Service, related_name="orders")
+    
+    # Keep service field for backward compatibility (will be the first service or None)
+    service = models.ForeignKey(Service, on_delete=models.SET_NULL, null=True, blank=True, related_name="primary_orders")
     service_location = models.ForeignKey(
         Location,
         on_delete=models.SET_NULL,
@@ -58,8 +62,24 @@ class Order(models.Model):
     def save(self, *args, **kwargs):
         if not self.code:
             self.code = f"WW-{uuid.uuid4().hex[:6].upper()}"
+        # Set the first service as primary service for backward compatibility
+        if not self.service and self.pk:
+            first_service = self.services.first()
+            if first_service:
+                self.service = first_service
         super().save(*args, **kwargs)
 
+    def get_total_price(self):
+        """Calculate total price from all services"""
+        return sum(service.price for service in self.services.all())
 
     def __str__(self):
-        return f"Order #{self.id} - {self.user.username}"
+        return f"Order #{self.id} - {self.user.username if self.user else 'Guest'}"
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['user', '-created_at']),
+            models.Index(fields=['rider', 'status']),
+            models.Index(fields=['status']),
+            models.Index(fields=['code']),
+        ]

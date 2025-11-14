@@ -45,11 +45,14 @@ class PaymentCreateSerializer(serializers.ModelSerializer):
 
 
 class BNPLUserSerializer(serializers.ModelSerializer):
+    is_enrolled = serializers.SerializerMethodField()
+
     class Meta:
         model = BNPLUser
         fields = [
             'id',
             'user',
+            'is_enrolled',
             'is_active',
             'phone_number',
             'credit_limit',
@@ -57,7 +60,11 @@ class BNPLUserSerializer(serializers.ModelSerializer):
             'created_at',
             'updated_at'
         ]
-        read_only_fields = ['id', 'user', 'credit_limit', 'current_balance', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'user', 'credit_limit', 'current_balance', 'created_at', 'updated_at', 'is_enrolled']
+
+    def get_is_enrolled(self, obj):
+        """Return True if user is enrolled AND active in BNPL"""
+        return obj.is_active
 
 
 class MpesaSTKRequestSerializer(serializers.ModelSerializer):

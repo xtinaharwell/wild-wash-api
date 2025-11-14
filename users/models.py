@@ -32,6 +32,8 @@ class User(AbstractUser):
     )
     # Customer's address/location
     location = models.CharField(max_length=100, blank=True, null=True)
+    # Customer's default pickup address for bookings
+    pickup_address = models.TextField(blank=True, null=True, help_text="Default pickup address for service bookings")
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default="customer")
     is_location_admin = models.BooleanField(
         default=False,

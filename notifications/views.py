@@ -14,7 +14,8 @@ class NotificationViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         # only return notifications for the authenticated user
-        return Notification.objects.filter(user=self.request.user).order_by('-created_at')
+        # Use select_related to avoid N+1 queries
+        return Notification.objects.filter(user=self.request.user).select_related('user', 'order').order_by('-created_at')
 
     @action(detail=True, methods=['post'])
     def mark_read(self, request, pk=None):
