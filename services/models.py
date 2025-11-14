@@ -14,6 +14,7 @@ class Service(models.Model):
     category = models.CharField(max_length=30, choices=CATEGORY_CHOICES)
     price = models.DecimalField(max_digits=10, decimal_places=2)
     description = models.TextField(blank=True)
+    image = models.ImageField(upload_to='services/', null=True, blank=True, help_text='Service image')
 
     def __str__(self):
         return self.name
