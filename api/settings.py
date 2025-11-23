@@ -30,7 +30,7 @@ SECRET_KEY = 'django-insecure-=cldztbc4jg&xl0!x673!*v2_=p$$eu)=7*f#d0#zs$44xx-h^
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '.vercel.app', 'wildwosh.kibeezy.com', 'http://wildwash.kibeezy.com', 'https://8000-firebase-wild-wash-apigit-1760697854679.cluster-lu4mup47g5gm4rtyvhzpwbfadi.cloudworkstations.dev', 'wildwash.kibeezy.com']
+ALLOWED_HOSTS = ['127.0.0.1', 'http://127.0.0.1:8000', 'localhost', '.vercel.app', 'wildwosh.kibeezy.com', 'http://wildwash.kibeezy.com', 'https://8000-firebase-wild-wash-apigit-1760697854679.cluster-lu4mup47g5gm4rtyvhzpwbfadi.cloudworkstations.dev', 'wildwash.kibeezy.com']
 
 
 # Application definition
@@ -176,18 +176,19 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 CSRF_TRUSTED_ORIGINS = [
     "https://127.0.0.1:8000",
+    'http://127.0.0.1:8000',
     "https://wildwash.kibeezy.com",
     "http://wildwash.kibeezy.com",  
     "https://8000-firebase-wild-wash-apigit-1760697854679.cluster-lu4mup47g5gm4rtyvhzpwbfadi.cloudworkstations.dev",
 ]
 
-# CSRF settings
-CSRF_COOKIE_DOMAIN = None      # Set to None for local development
-CSRF_COOKIE_SECURE = False    # Set to False for local development
-CSRF_COOKIE_SAMESITE = None   # Required for cross-origin requests
+# CSRF settings - Disable for local development with token auth
+CSRF_COOKIE_DOMAIN = None
+CSRF_COOKIE_SECURE = False
+CSRF_COOKIE_SAMESITE = 'Lax'
 CSRF_COOKIE_HTTPONLY = False
-CSRF_USE_SESSIONS = False     # Don't store in session for API usage
-CSRF_TRUSTED_ORIGINS = ["http://localhost:3000", "https://wildwash.kibeezy.com"]  # Add your frontend origin
+CSRF_USE_SESSIONS = False
+CSRF_TRUSTED_ORIGINS = ["http://localhost:3000", 'http://127.0.0.1:8000', "https://wildwash.kibeezy.com"]
 
 
 
@@ -197,6 +198,7 @@ CORS_ALLOWED_ORIGINS = [
     "https://wildwash.kibeezy.com",   
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    'http://127.0.0.1:8000',
 ]
 CORS_ALLOW_CREDENTIALS = True
 from corsheaders.defaults import default_headers
@@ -219,9 +221,5 @@ CORS_ALLOW_METHODS = [
     'PUT',
 ]
 
-# Allow cookies in the request
-SESSION_COOKIE_SAMESITE = 'None'
-CSRF_COOKIE_SAMESITE = 'None'
-SESSION_COOKIE_SECURE = True
-CSRF_COOKIE_SECURE = True
+
 

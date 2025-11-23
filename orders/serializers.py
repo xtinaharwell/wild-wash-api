@@ -69,6 +69,7 @@ class OrderCreateSerializer(serializers.ModelSerializer):
         Attach order to:
          - request.user if authenticated, else
          - a single guest user (created if missing).
+        Automatically set service_location from user's service_location.
         """
         request = self.context.get("request")
         user = getattr(request, "user", None)
@@ -92,6 +93,11 @@ class OrderCreateSerializer(serializers.ModelSerializer):
         if 'user' not in validated_data:
             validated_data['user'] = user
         
+        # Auto-set service_location from user's service_location if not provided
+        if 'service_location' not in validated_data or not validated_data['service_location']:
+            if user and user.service_location:
+                validated_data['service_location'] = user.service_location
+        
         # Extract services list for M2M
         services = validated_data.pop('services', [])
         
@@ -105,6 +111,10 @@ class OrderCreateSerializer(serializers.ModelSerializer):
         # Add services to the order
         if services:
             order.services.set(services)
+            # Set the primary service to the first one for backward compatibility
+            if not order.service:
+                order.service = services[0]
+                order.save(update_fields=['service'])
         
         order.code = f"WW-{order.id:05d}"
         order.save(update_fields=["code"])
@@ -238,6 +248,8 @@ class OrderListSerializer(serializers.ModelSerializer):
             "urgency",
             "items",
             "weight_kg",
+            "quantity",
+            "description",
             "package",
             "price",
             "total_price",

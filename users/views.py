@@ -5,6 +5,8 @@ from rest_framework.views import APIView
 from django.contrib.auth import get_user_model, authenticate
 from rest_framework.authtoken.models import Token
 from rest_framework.authentication import TokenAuthentication
+from django.views.decorators.csrf import csrf_exempt
+from django.utils.decorators import method_decorator
 
 from .serializers import (
     UserSerializer, UserCreateSerializer, ChangePasswordSerializer,
@@ -64,6 +66,7 @@ class UserViewSet(viewsets.ModelViewSet):
         return UserSerializer
 
 
+@method_decorator(csrf_exempt, name='dispatch')
 class LoginView(APIView):
     permission_classes = [permissions.AllowAny]
 
@@ -93,6 +96,7 @@ class ChangePasswordView(APIView):
         return Response({'status': 'password set'})
 
 
+@method_decorator(csrf_exempt, name='dispatch')
 class RegisterView(APIView):
     permission_classes = [permissions.AllowAny]
 
@@ -120,6 +124,7 @@ class LocationViewSet(viewsets.ModelViewSet):
         return super().get_permissions()
 
 
+@method_decorator(csrf_exempt, name='dispatch')
 class AdminLoginView(APIView):
     """
     Special login view for admin users that verifies superuser status
@@ -144,6 +149,7 @@ class AdminLoginView(APIView):
         })
 
 
+@method_decorator(csrf_exempt, name='dispatch')
 class StaffLoginView(APIView):
     """
     Special login view for staff members that checks their location assignment

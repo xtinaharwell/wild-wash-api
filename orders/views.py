@@ -10,37 +10,51 @@ from users.permissions import LocationBasedPermission
 
 class RequestedOrdersListView(generics.ListAPIView):
     """
-    GET -> List all orders with status 'requested'
+    GET -> List all unassigned orders with status 'requested'
+    Only for admin/staff to see pending orders
     """
     serializer_class = OrderListSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
         """
-        Get all requested orders regardless of user
+        Get all unassigned requested orders
         """
         return Order.objects.filter(
-            status='requested'
-        ).select_related('user', 'service').prefetch_related('services', 'rider').order_by('-created_at')
+            status='requested',
+            rider__isnull=True
+        ).select_related('user', 'service', 'service_location').prefetch_related('services').order_by('-created_at')
 
 class RiderOrderListView(generics.ListAPIView):
     """
-    GET -> List orders assigned to the authenticated rider and available orders
-    POST -> Accept an order
+    GET -> List orders assigned to the authenticated rider
+    Excludes orders with: Cleaning, fumigation, cctv installation, shower installation
     """
     serializer_class = OrderListSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
         """
-        Get both assigned and available orders for riders
+        Get orders assigned to the authenticated rider
+        Exclude orders containing specific services
         """
-        return Order.objects.filter(
-            # Either the order is assigned to the current rider
-            # OR it's an available order (no rider and status is requested)
-            models.Q(rider=self.request.user, status__in=['picked', 'in_progress']) |
-            models.Q(rider__isnull=True, status__in=['requested'])
-        ).select_related('user', 'service', 'rider', 'service_location').prefetch_related('services').order_by('-created_at')
+        excluded_services = ['Cleaning', 'fumigation', 'cctv installation', 'shower installation']
+        
+        queryset = Order.objects.filter(
+            # Orders assigned to the current rider
+            rider=self.request.user,
+            status__in=['in_progress', 'picked', 'ready', 'delivered']
+        ).exclude(
+            services__name__in=excluded_services
+        ).distinct().select_related('user', 'service', 'rider', 'service_location').prefetch_related('services').order_by('-created_at')
+        
+        # Debug logging
+        print(f"[DEBUG] Rider {self.request.user.username} (ID: {self.request.user.id}) querying orders")
+        print(f"[DEBUG] Total orders assigned to this rider: {queryset.count()}")
+        for order in queryset:
+            print(f"  - Order {order.code} (ID: {order.id}, Status: {order.status}, Rider: {order.rider.username})")
+        
+        return queryset
 
     def post(self, request, *args, **kwargs):
         """Accept an order"""
@@ -68,7 +82,7 @@ class RiderOrderListView(generics.ListAPIView):
 
 class OrderUpdateView(APIView):
     """
-    PATCH -> Update order status
+    PATCH -> Update order status, quantity, weight, and description
     """
     permission_classes = [permissions.IsAuthenticated, LocationBasedPermission]
 
@@ -86,12 +100,24 @@ class OrderUpdateView(APIView):
                     return Response({'error': 'You do not have permission to update this order'}, 
                                  status=status.HTTP_403_FORBIDDEN)
 
-            # Update status
+            # Update status if provided
             new_status = request.data.get('status')
-            if not new_status:
-                return Response({'error': 'Status is required'}, status=status.HTTP_400_BAD_REQUEST)
+            if new_status:
+                order.status = new_status
 
-            order.status = new_status
+            # Update rider-provided details
+            quantity = request.data.get('quantity')
+            if quantity is not None:
+                order.quantity = quantity
+
+            weight_kg = request.data.get('weight_kg')
+            if weight_kg is not None:
+                order.weight_kg = weight_kg
+
+            description = request.data.get('description')
+            if description is not None:
+                order.description = description
+
             order.save()
 
             serializer = OrderListSerializer(order)

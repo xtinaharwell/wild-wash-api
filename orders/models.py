@@ -57,6 +57,17 @@ class Order(models.Model):
         on_delete=models.SET_NULL,
         related_name="assigned_orders",
     )
+    # Rider-added details during pickup
+    quantity = models.IntegerField(
+        null=True,
+        blank=True,
+        help_text="Quantity of items picked up by rider"
+    )
+    description = models.TextField(
+        null=True,
+        blank=True,
+        help_text="Rider's notes about the order"
+    )
 
 
     def save(self, *args, **kwargs):
