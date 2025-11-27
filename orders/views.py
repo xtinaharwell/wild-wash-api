@@ -150,6 +150,9 @@ class OrderListCreateView(generics.ListCreateAPIView):
 
         # For staff users, filter by their service location
         if user.is_authenticated and user.is_staff and not user.is_superuser:
+            print(f"\n[DEBUG Orders] Staff user: {user.username} (ID: {user.id})")
+            print(f"[DEBUG Orders] Staff service_location: {user.service_location} (ID: {user.service_location.id if user.service_location else 'None'})")
+            
             if user.service_location:
                 # Filter orders where either:
                 # 1. The order's service_location matches staff's service_location, or
@@ -158,7 +161,12 @@ class OrderListCreateView(generics.ListCreateAPIView):
                     models.Q(service_location=user.service_location) |
                     models.Q(user__location__icontains=user.service_location.name)
                 )
+                print(f"[DEBUG Orders] Applied location filter for: {user.service_location}")
+                print(f"[DEBUG Orders] Total orders matching location: {queryset.count()}")
+                for order in queryset[:5]:
+                    print(f"  - Order {order.code}: service_location={order.service_location}, status={order.status}")
             else:
+                print(f"[DEBUG Orders] ⚠️ Staff has no service_location assigned, returning no orders")
                 return Order.objects.none()
         # For regular users, show only their orders
         elif user.is_authenticated and not user.is_staff:

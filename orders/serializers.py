@@ -95,8 +95,28 @@ class OrderCreateSerializer(serializers.ModelSerializer):
         
         # Auto-set service_location from user's service_location if not provided
         if 'service_location' not in validated_data or not validated_data['service_location']:
+            # Priority 1: User's service_location
             if user and user.service_location:
                 validated_data['service_location'] = user.service_location
+            # Priority 2: Try to infer from user's location field
+            elif user and user.location:
+                user_location = user.location.lower().strip()
+                from users.models import Location
+                inferred_location = Location.objects.filter(
+                    name__icontains=user_location,
+                    is_active=True
+                ).first()
+                if inferred_location:
+                    validated_data['service_location'] = inferred_location
+            # Priority 3: Try to infer from pickup_address
+            if 'service_location' not in validated_data or not validated_data.get('service_location'):
+                pickup_address = validated_data.get('pickup_address', '').lower()
+                from users.models import Location
+                locations = Location.objects.filter(is_active=True)
+                for loc in locations:
+                    if loc.name.lower() in pickup_address:
+                        validated_data['service_location'] = loc
+                        break
         
         # Extract services list for M2M
         services = validated_data.pop('services', [])
