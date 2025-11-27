@@ -49,9 +49,9 @@ class RiderOrderListView(generics.ListAPIView):
         ).distinct().select_related('user', 'service', 'rider', 'service_location').prefetch_related('services').order_by('-created_at')
         
         # Debug logging
-        print(f"[DEBUG] Rider {self.request.user.username} (ID: {self.request.user.id}) querying orders")
+        print(f"\n[DEBUG RiderOrders] Rider {self.request.user.username} (ID: {self.request.user.id}) querying orders")
         print(f"[DEBUG] Total orders assigned to this rider: {queryset.count()}")
-        for order in queryset:
+        for order in queryset[:10]:
             print(f"  - Order {order.code} (ID: {order.id}, Status: {order.status}, Rider: {order.rider.username})")
         
         return queryset
@@ -83,6 +83,7 @@ class RiderOrderListView(generics.ListAPIView):
 class OrderUpdateView(APIView):
     """
     PATCH -> Update order status, quantity, weight, and description
+    Sends notification to rider when status changes to 'ready' (ready for delivery)
     """
     permission_classes = [permissions.IsAuthenticated, LocationBasedPermission]
 
@@ -100,8 +101,17 @@ class OrderUpdateView(APIView):
                     return Response({'error': 'You do not have permission to update this order'}, 
                                  status=status.HTTP_403_FORBIDDEN)
 
-            # Update status if provided
+            # Check if status is changing to 'ready'
             new_status = request.data.get('status')
+            old_status = order.status
+            status_changed_to_ready = new_status and new_status.lower() == 'ready' and old_status.lower() != 'ready'
+
+            print(f"\n[DEBUG OrderUpdate] Order {order.code}")
+            print(f"[DEBUG] Old status: {old_status}, New status: {new_status}")
+            print(f"[DEBUG] Status changed to ready: {status_changed_to_ready}")
+            print(f"[DEBUG] Current rider: {order.rider.username if order.rider else 'None'}")
+
+            # Update status if provided
             if new_status:
                 order.status = new_status
 
@@ -119,6 +129,52 @@ class OrderUpdateView(APIView):
                 order.description = description
 
             order.save()
+            print(f"[DEBUG] Order saved with status: {order.status}")
+
+            # Handle status change to 'ready'
+            if status_changed_to_ready:
+                from notifications.models import Notification
+                from django.contrib.auth import get_user_model
+                User = get_user_model()
+                
+                assigned_rider = None
+                
+                # If order doesn't have a rider assigned, assign it to an available rider in the same location
+                if not order.rider and order.service_location:
+                    print(f"[DEBUG] No rider assigned yet, finding available rider...")
+                    available_riders = User.objects.filter(
+                        role='rider',
+                        service_location=order.service_location,
+                        is_active=True
+                    ).select_related('rider_profile').order_by('rider_profile__completed_jobs')
+                    
+                    print(f"[DEBUG] Available riders in {order.service_location.name}: {available_riders.count()}")
+                    
+                    if available_riders.exists():
+                        assigned_rider = available_riders.first()
+                        order.rider = assigned_rider
+                        order.save(update_fields=['rider'])
+                        print(f"✓ Order {order.code} assigned to rider {assigned_rider.username}")
+                    else:
+                        print(f"⚠ No available riders in {order.service_location.name} for order {order.code}")
+                else:
+                    # Rider already assigned, use existing rider
+                    assigned_rider = order.rider
+                    if assigned_rider:
+                        print(f"[DEBUG] Rider already assigned: {assigned_rider.username}")
+                
+                # Send notification to rider if assigned
+                if assigned_rider:
+                    message = f"Order {order.code} is ready for delivery! Pickup from: {order.pickup_address}"
+                    notification = Notification.objects.create(
+                        user=assigned_rider,
+                        order=order,
+                        message=message,
+                        notification_type='order_update'
+                    )
+                    print(f"✓ Notification (ID: {notification.id}) sent to rider {assigned_rider.username} for order {order.code}")
+                else:
+                    print(f"⚠ No rider to send notification to for order {order.code}")
 
             serializer = OrderListSerializer(order)
             return Response(serializer.data)
@@ -126,6 +182,7 @@ class OrderUpdateView(APIView):
         except Order.DoesNotExist:
             return Response({'error': 'Order not found'}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
+            print(f"[ERROR] Exception in OrderUpdateView: {str(e)}")
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class OrderListCreateView(generics.ListCreateAPIView):
