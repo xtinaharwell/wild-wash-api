@@ -101,10 +101,20 @@ class OrderUpdateView(APIView):
                     return Response({'error': 'You do not have permission to update this order'}, 
                                  status=status.HTTP_403_FORBIDDEN)
 
-            # Check if status is changing to 'ready'
+            # Determine incoming values and capture old values for audit BEFORE mutating
             new_status = request.data.get('status')
             old_status = order.status
             status_changed_to_ready = new_status and new_status.lower() == 'ready' and old_status.lower() != 'ready'
+
+            # Capture old values before update
+            old_values = {
+                'status': old_status,
+                'quantity': getattr(order, 'quantity', None),
+                'weight_kg': getattr(order, 'weight_kg', None),
+                'description': getattr(order, 'description', None),
+                'actual_price': getattr(order, 'actual_price', None),
+                'delivered_at': getattr(order, 'delivered_at', None),
+            }
 
             print(f"\n[DEBUG OrderUpdate] Order {order.code}")
             print(f"[DEBUG] Old status: {old_status}, New status: {new_status}")
@@ -128,7 +138,76 @@ class OrderUpdateView(APIView):
             if description is not None:
                 order.description = description
 
+            # Update staff-entered actual price if provided
+            actual_price = request.data.get('actual_price')
+            if actual_price is not None:
+                try:
+                    # attempt to coerce into Decimal-compatible numeric string
+                    from decimal import Decimal
+                    order.actual_price = Decimal(str(actual_price))
+                except Exception:
+                    # fallback to raw assignment; DB will validate/raise if invalid
+                    order.actual_price = actual_price
+
             order.save()
+
+            # Accept delivered_at from request (rider marking delivery)
+            delivered_at = request.data.get('delivered_at')
+            if delivered_at is not None:
+                try:
+                    # Parse and set delivered_at; allow ISO strings
+                    from django.utils.dateparse import parse_datetime
+                    parsed = parse_datetime(str(delivered_at))
+                    if parsed:
+                        order.delivered_at = parsed
+                        order.save(update_fields=['delivered_at'])
+                except Exception:
+                    # ignore parse errors
+                    pass
+
+            # Record events for changes
+            from .models import OrderEvent
+            actor = request.user if request.user.is_authenticated else None
+
+            # status change
+            if new_status and (old_status != new_status):
+                OrderEvent.objects.create(
+                    order=order,
+                    actor=actor,
+                    event_type='status_changed',
+                    data={'old': old_status, 'new': new_status}
+                )
+
+            # details changed (quantity, weight, description)
+            changed_details = {}
+            if quantity is not None and quantity != old_values.get('quantity'):
+                changed_details['quantity'] = {'old': old_values.get('quantity'), 'new': quantity}
+            if weight_kg is not None and weight_kg != old_values.get('weight_kg'):
+                changed_details['weight_kg'] = {'old': old_values.get('weight_kg'), 'new': weight_kg}
+            if description is not None and description != old_values.get('description'):
+                changed_details['description'] = {'old': old_values.get('description'), 'new': description}
+            # actual_price changed
+            if actual_price is not None:
+                # Compare with old value (coerce to string/Decimal as needed)
+                old_ap = old_values.get('actual_price')
+                # If Decimal objects, string comparison is safe for equality check here
+                if str(old_ap) != str(actual_price):
+                    changed_details['actual_price'] = {'old': old_ap, 'new': actual_price}
+            # delivered_at changed (rider marking delivered)
+            delivered_at_req = request.data.get('delivered_at')
+            if delivered_at_req is not None:
+                old_da = old_values.get('delivered_at')
+                # compare as ISO string where possible
+                if str(old_da) != str(delivered_at_req):
+                    changed_details['delivered_at'] = {'old': old_da, 'new': delivered_at_req}
+
+            if changed_details:
+                OrderEvent.objects.create(
+                    order=order,
+                    actor=actor,
+                    event_type='details_updated',
+                    data=changed_details
+                )
             print(f"[DEBUG] Order saved with status: {order.status}")
 
             # Handle status change to 'ready'
@@ -176,6 +255,16 @@ class OrderUpdateView(APIView):
                 else:
                     print(f"⚠ No rider to send notification to for order {order.code}")
 
+                # record assignment event
+                if assigned_rider:
+                    from .models import OrderEvent
+                    OrderEvent.objects.create(
+                        order=order,
+                        actor=request.user if request.user.is_authenticated else None,
+                        event_type='assigned_rider',
+                        data={'rider_id': assigned_rider.id, 'rider_username': assigned_rider.username}
+                    )
+
             serializer = OrderListSerializer(order)
             return Response(serializer.data)
 
@@ -191,7 +280,19 @@ class OrderListCreateView(generics.ListCreateAPIView):
     POST -> create order (anonymous allowed)
     """
     queryset = Order.objects.all().order_by("-created_at")
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly, LocationBasedPermission]
+    # We'll enforce authentication for GET (listing) but still allow anonymous POST (create)
+    permission_classes = [LocationBasedPermission]
+
+    def get_permissions(self):
+        """
+        Use stricter permissions for GET requests (require authentication) so
+        anonymous users cannot list all orders. Allow anonymous POST to create orders.
+        """
+        if self.request.method == 'GET':
+            return [permissions.IsAuthenticated(), LocationBasedPermission()]
+        if self.request.method == 'POST':
+            return [permissions.AllowAny(), LocationBasedPermission()]
+        return [permissions.IsAuthenticated(), LocationBasedPermission()]
 
     def get_queryset(self):
         queryset = super().get_queryset()

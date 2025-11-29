@@ -34,8 +34,10 @@ class OrderCreateSerializer(serializers.ModelSerializer):
             "service",
             "services",
             "service_location",
+            "description",
             "pickup_address",
             "dropoff_address",
+            "requested_pickup_at",
             "urgency",
             "items",
             "package",
@@ -150,6 +152,7 @@ class OrderListSerializer(serializers.ModelSerializer):
     package = serializers.SerializerMethodField()
     price_display = serializers.SerializerMethodField()
     total_price = serializers.SerializerMethodField()
+    actual_price = serializers.SerializerMethodField()
     status = serializers.CharField()
     service_name = serializers.CharField(source="service.name", read_only=True, allow_null=True)
     services_list = serializers.SerializerMethodField()
@@ -158,6 +161,7 @@ class OrderListSerializer(serializers.ModelSerializer):
     rider = serializers.SerializerMethodField()
     pickup_location = serializers.SerializerMethodField()
     dropoff_location = serializers.SerializerMethodField()
+    timeline = serializers.SerializerMethodField()
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -204,6 +208,36 @@ class OrderListSerializer(serializers.ModelSerializer):
         services = obj.services.all().values('id', 'name', 'price')
         return list(services)
 
+    def get_timeline(self, obj):
+        """Return the order events/timeline for admin users or an empty list for others.
+
+        The context must provide the request; if the request user is staff or superuser, return full timeline.
+        Otherwise return a limited timeline (e.g. status changes only) or empty list.
+        """
+        request = self.context.get('request')
+        # If no request context, be conservative and return the stored timeline if present
+        if not request:
+            events = getattr(obj, 'events', []).all() if hasattr(obj, 'events') else []
+        else:
+            user = getattr(request, 'user', None)
+            # Admins (staff or superusers) get full timeline
+            if user and (getattr(user, 'is_staff', False) or getattr(user, 'is_superuser', False)):
+                events = obj.events.all()
+            else:
+                # For non-admins, expose only generic status entries if any
+                events = obj.events.filter(event_type__icontains='status')
+
+        out = []
+        for ev in events:
+            out.append({
+                'id': ev.id,
+                'event_type': ev.event_type,
+                'actor': ev.actor.username if ev.actor else None,
+                'data': ev.data,
+                'created_at': ev.created_at.isoformat() if ev.created_at else None,
+            })
+        return out
+
     def get_total_price(self, obj):
         """Calculate total price from all services"""
         total = sum(service.price for service in obj.services.all())
@@ -232,6 +266,15 @@ class OrderListSerializer(serializers.ModelSerializer):
             except Exception:
                 return str(obj.price)
         return ""
+
+    def get_actual_price(self, obj):
+        """Convert Decimal actual_price to float for JSON serialization"""
+        if obj.actual_price is not None:
+            try:
+                return float(obj.actual_price)
+            except (ValueError, TypeError):
+                return None
+        return None
 
     def get_pickup_location(self, obj):
         """Return pickup location coordinates if available from service_location"""
@@ -263,6 +306,7 @@ class OrderListSerializer(serializers.ModelSerializer):
             "service_location",
             "pickup_address",
             "dropoff_address",
+            "requested_pickup_at",
             "pickup_location",
             "dropoff_location",
             "urgency",
@@ -272,10 +316,12 @@ class OrderListSerializer(serializers.ModelSerializer):
             "description",
             "package",
             "price",
+            "actual_price",
             "total_price",
             "price_display",
             "status",
             "estimated_delivery",
             "delivered_at",
-            "rider"
+            "rider",
+            "timeline",
         ]

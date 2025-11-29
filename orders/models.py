@@ -46,6 +46,14 @@ class Order(models.Model):
     package = models.IntegerField(default=1, blank=True)  # you already had this
     weight_kg = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
     price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)  # store numeric
+    # Staff-entered actual price paid (may differ from estimate)
+    actual_price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Actual price paid for the order recorded by staff"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     estimated_delivery = models.DateTimeField(null=True, blank=True)
@@ -68,6 +76,8 @@ class Order(models.Model):
         blank=True,
         help_text="Rider's notes about the order"
     )
+    # Optional requested pickup datetime set by customer when scheduling
+    requested_pickup_at = models.DateTimeField(null=True, blank=True)
 
 
     def save(self, *args, **kwargs):
@@ -94,3 +104,27 @@ class Order(models.Model):
             models.Index(fields=['status']),
             models.Index(fields=['code']),
         ]
+
+
+class OrderEvent(models.Model):
+    """A lightweight audit/event record for actions taken on an Order.
+
+    Examples: order_created, status_changed, pickup_details_recorded, assigned_rider
+    """
+    order = models.ForeignKey(Order, related_name='events', on_delete=models.CASCADE)
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='order_events',
+    )
+    event_type = models.CharField(max_length=64)
+    data = models.JSONField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at']
+
+    def __str__(self):
+        return f"OrderEvent({self.order.code}): {self.event_type} @ {self.created_at}"
