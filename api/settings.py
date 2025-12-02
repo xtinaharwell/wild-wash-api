@@ -30,7 +30,7 @@ SECRET_KEY = 'django-insecure-=cldztbc4jg&xl0!x673!*v2_=p$$eu)=7*f#d0#zs$44xx-h^
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['127.0.0.1', 'http://127.0.0.1:8000', 'localhost', '.vercel.app', 'wildwosh.kibeezy.com', 'http://wildwash.kibeezy.com', 'https://8000-firebase-wild-wash-apigit-1760697854679.cluster-lu4mup47g5gm4rtyvhzpwbfadi.cloudworkstations.dev', 'wildwash.kibeezy.com']
+ALLOWED_HOSTS = ['127.0.0.1', 'http://127.0.0.1:8000', 'localhost', '.vercel.app', 'wildwosh.kibeezy.com', 'https://wildwash.co.ke', 'http://wildwash.kibeezy.com', 'https://8000-firebase-wild-wash-apigit-1760697854679.cluster-lu4mup47g5gm4rtyvhzpwbfadi.cloudworkstations.dev', 'wildwash.kibeezy.com', "https://3000-firebase-wildwashgit-1760698481871.cluster-ikslh4rdsnbqsvu5nw3v4dqjj2.cloudworkstations.dev"]
 
 
 # Application definition
@@ -177,8 +177,10 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 CSRF_TRUSTED_ORIGINS = [
     "https://127.0.0.1:8000",
     'http://127.0.0.1:8000',
+    "https://wildwash.co.ke",
     "https://wildwash.kibeezy.com",
-    "http://wildwash.kibeezy.com",  
+    "http://wildwash.kibeezy.com",
+    "https://3000-firebase-wildwashgit-1760698481871.cluster-ikslh4rdsnbqsvu5nw3v4dqjj2.cloudworkstations.dev",
     "https://8000-firebase-wild-wash-apigit-1760697854679.cluster-lu4mup47g5gm4rtyvhzpwbfadi.cloudworkstations.dev",
 ]
 
@@ -188,14 +190,20 @@ CSRF_COOKIE_SECURE = False
 CSRF_COOKIE_SAMESITE = 'Lax'
 CSRF_COOKIE_HTTPONLY = False
 CSRF_USE_SESSIONS = False
-CSRF_TRUSTED_ORIGINS = ["http://localhost:3000", 'http://127.0.0.1:8000', "https://wildwash.kibeezy.com"]
+CSRF_TRUSTED_ORIGINS = ["http://localhost:3000", 'http://127.0.0.1:8000',"https://wildwash.co.ke", "https://wildwash.kibeezy.com", "https://8000-firebase-wild-wash-apigit-1760697854679.cluster-lu4mup47g5gm4rtyvhzpwbfadi.cloudworkstations.dev", "https://3000-firebase-wildwashgit-1760698481871.cluster-ikslh4rdsnbqsvu5nw3v4dqjj2.cloudworkstations.dev"]
 
+
+# Allow all origins temporarily for testing
+CORS_ALLOW_ALL_ORIGINS = True
 
 
 CORS_ALLOWED_ORIGINS = [
     "https://9000-firebase-wildwashgit-1760698481871.cluster-ikslh4rdsnbqsvu5nw3v4dqjj2.cloudworkstations.dev",
+    "https://8000-firebase-wild-wash-apigit-1760697854679.cluster-lu4mup47g5gm4rtyvhzpwbfadi.cloudworkstations.dev",
     "http://wildwash.kibeezy.com",
-    "https://wildwash.kibeezy.com",   
+    "https://3000-firebase-wildwashgit-1760698481871.cluster-ikslh4rdsnbqsvu5nw3v4dqjj2.cloudworkstations.dev",
+    "https://wildwash.kibeezy.com",
+    "https://wildwash.co.ke",   
     "http://localhost:3000",
     "http://127.0.0.1:3000",
     'http://127.0.0.1:8000',
@@ -208,8 +216,6 @@ CORS_ALLOW_HEADERS = list(default_headers) + [
     'authorization',
 ]
 
-# Allow credentials to be included in CORS requests
-CORS_ALLOW_CREDENTIALS = True
 
 # Allow all HTTP methods
 CORS_ALLOW_METHODS = [
