@@ -32,11 +32,16 @@ class LoanApplicationDetailSerializer(serializers.ModelSerializer):
     repayments = LoanRepaymentSerializer(many=True, read_only=True)
     order_code = serializers.CharField(source='order.code', read_only=True)
     user_username = serializers.CharField(source='user.username', read_only=True)
+    user_email = serializers.CharField(source='user.email', read_only=True)
+    user_phone = serializers.SerializerMethodField()
+    user_id = serializers.CharField(source='user.id', read_only=True)
+    user_name = serializers.SerializerMethodField()
     
     class Meta:
         model = LoanApplication
         fields = [
-            'id', 'user', 'user_username', 'loan_type', 'loan_amount', 'duration_days',
+            'id', 'user', 'user_id', 'user_name', 'user_username', 'user_email', 'user_phone',
+            'loan_type', 'loan_amount', 'duration_days',
             'purpose', 'status', 'daily_interest_rate', 'total_interest', 'total_repayment',
             'order', 'order_code', 'order_value', 'created_at', 'updated_at', 'reviewed_at',
             'approved_at', 'funded_at', 'due_date', 'reviewer_notes', 'amount_repaid',
@@ -46,21 +51,50 @@ class LoanApplicationDetailSerializer(serializers.ModelSerializer):
             'id', 'created_at', 'updated_at', 'reviewed_at', 'approved_at', 'funded_at',
             'total_interest', 'total_repayment'
         ]
+    
+    def get_user_phone(self, obj):
+        """Get user phone number with fallback"""
+        return obj.user.phone if hasattr(obj.user, 'phone') and obj.user.phone else (
+            obj.user.phone_number if hasattr(obj.user, 'phone_number') else None
+        )
+    
+    def get_user_name(self, obj):
+        """Get full name or username"""
+        if obj.user.first_name and obj.user.last_name:
+            return f"{obj.user.first_name} {obj.user.last_name}"
+        return obj.user.username
 
 
 class LoanApplicationListSerializer(serializers.ModelSerializer):
     """Lightweight serializer for list views"""
     order_code = serializers.CharField(source='order.code', read_only=True)
     user_username = serializers.CharField(source='user.username', read_only=True)
+    user_email = serializers.CharField(source='user.email', read_only=True)
+    user_phone = serializers.SerializerMethodField()
+    user_id = serializers.CharField(source='user.id', read_only=True)
+    user_name = serializers.SerializerMethodField()
     collateral_count = serializers.SerializerMethodField()
     guarantor_count = serializers.SerializerMethodField()
     
     class Meta:
         model = LoanApplication
         fields = [
-            'id', 'user', 'user_username', 'loan_type', 'loan_amount', 'status',
+            'id', 'user', 'user_id', 'user_name', 'user_username', 'user_email', 'user_phone',
+            'loan_type', 'loan_amount', 'status',
             'order_code', 'created_at', 'collateral_count', 'guarantor_count'
         ]
+    
+    def get_user_phone(self, obj):
+        """Get user phone number with fallback"""
+        return obj.user.phone if hasattr(obj.user, 'phone') and obj.user.phone else (
+            obj.user.phone_number if hasattr(obj.user, 'phone_number') else None
+        )
+    
+    def get_user_name(self, obj):
+        """Get full name or username"""
+        if obj.user.first_name and obj.user.last_name:
+            return f"{obj.user.first_name} {obj.user.last_name}"
+        return obj.user.username
     
     def get_collateral_count(self, obj):
         return obj.collateral_items.count()
