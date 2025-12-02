@@ -46,8 +46,9 @@ class LoanApplicationViewSet(viewsets.ModelViewSet):
         """Use different serializers based on action"""
         if self.action == 'create':
             return CreateLoanApplicationSerializer
-        elif self.action in ['list', 'pending_review']:
+        elif self.action == 'pending_review':
             return LoanApplicationListSerializer
+        # Return detailed serializer for list and retrieve to get all nested data
         return LoanApplicationDetailSerializer
     
     def create(self, request, *args, **kwargs):
