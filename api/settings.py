@@ -51,6 +51,7 @@ INSTALLED_APPS = [
     'riders',
     'offers',
     'subscriptions',
+    'financing',
     'rest_framework',
     'rest_framework.authtoken',
     'corsheaders',

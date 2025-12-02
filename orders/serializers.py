@@ -43,8 +43,14 @@ class OrderCreateSerializer(serializers.ModelSerializer):
             "package",
             "weight_kg",
             "price",
+            "actual_price",
             "total_price",
             "estimated_delivery",
+            # Manual order fields
+            "order_type",
+            "drop_off_type",
+            "customer_name",
+            "customer_phone",
         ]
         read_only_fields = ["id", "total_price"]
 
@@ -55,13 +61,23 @@ class OrderCreateSerializer(serializers.ModelSerializer):
         if data.get("items", 0) < 1:
             raise serializers.ValidationError({"items": "Must be at least 1"})
         
-        # Ensure at least one service is provided
-        services = data.get("services", [])
-        service = data.get("service")
-        if not services and not service:
-            raise serializers.ValidationError(
-                {"services": "At least one service must be provided"}
-            )
+        # Check if this is a manual order
+        order_type = data.get("order_type", "online")
+        
+        if order_type == "manual":
+            # Manual orders require customer details instead of services
+            if not data.get("customer_name"):
+                raise serializers.ValidationError({"customer_name": "Customer name is required for manual orders"})
+            if not data.get("customer_phone"):
+                raise serializers.ValidationError({"customer_phone": "Customer phone is required for manual orders"})
+        else:
+            # Online orders require at least one service
+            services = data.get("services", [])
+            service = data.get("service")
+            if not services and not service:
+                raise serializers.ValidationError(
+                    {"services": "At least one service must be provided"}
+                )
         
         # allow weight_kg and price to be null for backend calculation
         return data
@@ -69,39 +85,58 @@ class OrderCreateSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         """
         Attach order to:
-         - request.user if authenticated, else
-         - a single guest user (created if missing).
+         - request.user if authenticated (for manual orders by staff), else
+         - a single guest user (created if missing) for online orders.
         Automatically set service_location from user's service_location.
         """
         request = self.context.get("request")
         user = getattr(request, "user", None)
+        order_type = validated_data.get("order_type", "online")
 
-        # If the incoming request is from an anonymous user, attach to guest user.
-        if not (user and getattr(user, "is_authenticated", False)):
-            guest_username = "guest_orders"           # choose a unique username
-            guest_email = "guest@wildwash.local"
-            guest_user, created = User.objects.get_or_create(
-                username=guest_username,
-                defaults={"email": guest_email, "is_active": False},
-            )
-            if created:
-                # Make sure the account cannot be used to login
-                guest_user.set_unusable_password()
-                guest_user.save()
+        # For manual orders, track which staff member created it
+        created_by_user = None
+        if order_type == "manual" and user and getattr(user, "is_authenticated", False):
+            created_by_user = user
+            # Manual orders don't necessarily need a user linked
+            if 'user' not in validated_data or validated_data['user'] is None:
+                # Create or get guest user for manual orders
+                guest_username = "guest_orders"
+                guest_email = "guest@wildwash.local"
+                guest_user, created = User.objects.get_or_create(
+                    username=guest_username,
+                    defaults={"email": guest_email, "is_active": False},
+                )
+                if created:
+                    guest_user.set_unusable_password()
+                    guest_user.save()
+                validated_data['user'] = guest_user
+        else:
+            # For online orders, use normal user handling
+            if not (user and getattr(user, "is_authenticated", False)):
+                guest_username = "guest_orders"
+                guest_email = "guest@wildwash.local"
+                guest_user, created = User.objects.get_or_create(
+                    username=guest_username,
+                    defaults={"email": guest_email, "is_active": False},
+                )
+                if created:
+                    guest_user.set_unusable_password()
+                    guest_user.save()
+                user = guest_user
 
-            user = guest_user
-
-        # Create the order and set the human-friendly code afterwards
-        if 'user' not in validated_data:
-            validated_data['user'] = user
+            if 'user' not in validated_data:
+                validated_data['user'] = user
         
-        # Auto-set service_location from user's service_location if not provided
+        # Auto-set service_location from staff's service_location for manual orders
         if 'service_location' not in validated_data or not validated_data['service_location']:
-            # Priority 1: User's service_location
-            if user and user.service_location:
+            if order_type == "manual" and created_by_user and created_by_user.service_location:
+                # Manual orders inherit staff member's location
+                validated_data['service_location'] = created_by_user.service_location
+            elif user and user.service_location:
+                # For online orders, use user's service_location
                 validated_data['service_location'] = user.service_location
-            # Priority 2: Try to infer from user's location field
             elif user and user.location:
+                # Try to infer from user's location field
                 user_location = user.location.lower().strip()
                 from users.models import Location
                 inferred_location = Location.objects.filter(
@@ -110,8 +145,8 @@ class OrderCreateSerializer(serializers.ModelSerializer):
                 ).first()
                 if inferred_location:
                     validated_data['service_location'] = inferred_location
-            # Priority 3: Try to infer from pickup_address
-            if 'service_location' not in validated_data or not validated_data.get('service_location'):
+            else:
+                # Try to infer from pickup_address
                 pickup_address = validated_data.get('pickup_address', '').lower()
                 from users.models import Location
                 locations = Location.objects.filter(is_active=True)
@@ -124,13 +159,21 @@ class OrderCreateSerializer(serializers.ModelSerializer):
         services = validated_data.pop('services', [])
         
         # If no services in list but single service provided, use that
-        if not services and 'service' in validated_data:
+        if not services and 'service' in validated_data and order_type != "manual":
             services = [validated_data['service']]
+        
+        # Track created_by for manual orders
+        if created_by_user:
+            validated_data['created_by'] = created_by_user
+        
+        # For manual orders, set status to pending_assignment (don't auto-assign rider)
+        if order_type == "manual":
+            validated_data['status'] = 'pending_assignment'
         
         # Create the order
         order = Order.objects.create(**validated_data)
         
-        # Add services to the order
+        # Add services to the order (skip for manual orders)
         if services:
             order.services.set(services)
             # Set the primary service to the first one for backward compatibility
@@ -159,6 +202,7 @@ class OrderListSerializer(serializers.ModelSerializer):
     user = serializers.SerializerMethodField()
     service_location = serializers.SerializerMethodField()
     rider = serializers.SerializerMethodField()
+    created_by = serializers.SerializerMethodField()
     pickup_location = serializers.SerializerMethodField()
     dropoff_location = serializers.SerializerMethodField()
     timeline = serializers.SerializerMethodField()
@@ -200,6 +244,19 @@ class OrderListSerializer(serializers.ModelSerializer):
             'last_name': obj.rider.last_name,
             'service_location': {
                 'name': obj.rider.service_location.name if obj.rider.service_location else None
+            }
+        }
+
+    def get_created_by(self, obj):
+        """Return staff member who created this manual order"""
+        if not obj.created_by:
+            return None
+        return {
+            'username': obj.created_by.username,
+            'first_name': obj.created_by.first_name,
+            'last_name': obj.created_by.last_name,
+            'service_location': {
+                'name': obj.created_by.service_location.name if obj.created_by.service_location else None
             }
         }
 
@@ -323,5 +380,11 @@ class OrderListSerializer(serializers.ModelSerializer):
             "estimated_delivery",
             "delivered_at",
             "rider",
+            "created_by",
             "timeline",
+            # Manual order fields
+            "order_type",
+            "drop_off_type",
+            "customer_name",
+            "customer_phone",
         ]

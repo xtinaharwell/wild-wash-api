@@ -13,7 +13,8 @@ class Order(models.Model):
         ('in_progress', 'In Progress'),
         ('ready', 'Ready for Delivery'),
         ('delivered', 'Delivered'),
-        ('cancelled', 'Cancelled'),    # add cancelled to match frontend
+        ('cancelled', 'Cancelled'),
+        ('pending_assignment', 'Pending Assignment'),  # For manual/walk-in orders awaiting rider assignment
     ]
 
     user = models.ForeignKey(
@@ -78,6 +79,48 @@ class Order(models.Model):
     )
     # Optional requested pickup datetime set by customer when scheduling
     requested_pickup_at = models.DateTimeField(null=True, blank=True)
+    
+    # Fields for staff-created manual orders
+    order_type = models.CharField(
+        max_length=20,
+        choices=[
+            ('online', 'Online Order'),
+            ('manual', 'Staff-Created Order'),
+        ],
+        default='online',
+        help_text="Whether order was created online or manually by staff"
+    )
+    drop_off_type = models.CharField(
+        max_length=20,
+        choices=[
+            ('delivery', 'Customer Delivery'),
+            ('walk_in', 'Walk-in Customer'),
+            ('phone', 'Phone Order'),
+        ],
+        default='delivery',
+        help_text="How the order was dropped off/created"
+    )
+    # Customer details for manual orders (when user is None or guest)
+    customer_name = models.CharField(
+        max_length=200,
+        null=True,
+        blank=True,
+        help_text="Customer name for manual/walk-in orders"
+    )
+    customer_phone = models.CharField(
+        max_length=20,
+        null=True,
+        blank=True,
+        help_text="Customer phone for manual/walk-in orders"
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="created_orders",
+        help_text="Staff member who created this manual order"
+    )
 
 
     def save(self, *args, **kwargs):

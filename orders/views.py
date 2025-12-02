@@ -8,6 +8,46 @@ from .models import Order
 from .serializers import OrderListSerializer, OrderCreateSerializer
 from users.permissions import LocationBasedPermission
 
+class StaffCreateOrderView(APIView):
+    """
+    POST -> Create a manual order for a customer (by staff)
+    Only accessible by staff members
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, *args, **kwargs):
+        # Check if user is staff
+        if not (request.user.is_staff or request.user.is_superuser):
+            return Response(
+                {'error': 'Only staff members can create manual orders'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # Use the OrderCreateSerializer to handle order creation
+        serializer = OrderCreateSerializer(
+            data=request.data,
+            context={'request': request}
+        )
+
+        if serializer.is_valid():
+            try:
+                order = serializer.save()
+                return Response(
+                    OrderListSerializer(order, context={'request': request}).data,
+                    status=status.HTTP_201_CREATED
+                )
+            except Exception as e:
+                return Response(
+                    {'error': f'Failed to create order: {str(e)}'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        else:
+            return Response(
+                serializer.errors,
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+
 class RequestedOrdersListView(generics.ListAPIView):
     """
     GET -> List all unassigned orders with status 'requested'
@@ -218,8 +258,41 @@ class OrderUpdateView(APIView):
                 
                 assigned_rider = None
                 
+                # For manual orders created by staff, only auto-assign if delivery address was provided
+                if order.order_type == 'manual':
+                    print(f"[DEBUG] Order {order.code} is a manual order")
+                    print(f"[DEBUG] Order created by staff: {order.created_by.username if order.created_by else 'Unknown'}")
+                    
+                    # Check if delivery address was provided (not the default "To be assigned")
+                    has_delivery_address = (
+                        order.dropoff_address and 
+                        order.dropoff_address.lower() != 'to be assigned' and
+                        order.dropoff_address.strip() != ''
+                    )
+                    
+                    if has_delivery_address:
+                        print(f"[DEBUG] Delivery address provided: {order.dropoff_address}")
+                        print(f"[DEBUG] Assigning to available rider...")
+                        # Only auto-assign if delivery address was provided
+                        if not order.rider and order.service_location:
+                            available_riders = User.objects.filter(
+                                role='rider',
+                                service_location=order.service_location,
+                                is_active=True
+                            ).select_related('rider_profile').order_by('rider_profile__completed_jobs')
+                            
+                            if available_riders.exists():
+                                assigned_rider = available_riders.first()
+                                order.rider = assigned_rider
+                                order.save(update_fields=['rider'])
+                                print(f"✓ Order {order.code} assigned to rider {assigned_rider.username}")
+                            else:
+                                print(f"⚠ No available riders in {order.service_location.name}")
+                    else:
+                        print(f"[DEBUG] No delivery address - order stays with staff creator")
+                        
                 # If order doesn't have a rider assigned, assign it to an available rider in the same location
-                if not order.rider and order.service_location:
+                elif not order.rider and order.service_location:
                     print(f"[DEBUG] No rider assigned yet, finding available rider...")
                     available_riders = User.objects.filter(
                         role='rider',

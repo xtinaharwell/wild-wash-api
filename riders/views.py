@@ -8,7 +8,7 @@ from .serializers import RiderLocationSerializer, RiderProfileSerializer
 
 class RiderLocationViewSet(viewsets.ModelViewSet):
     """Private viewset: riders push GPS updates. Auth required for create/update."""
-    queryset = RiderLocation.objects.all()
+    queryset = RiderLocation.objects.all().order_by('-id')
     serializer_class = RiderLocationSerializer
     permission_classes = [permissions.IsAuthenticated]
 

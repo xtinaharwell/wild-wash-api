@@ -50,7 +50,7 @@ class UserViewSet(viewsets.ModelViewSet):
     """
     Admin-friendly user viewset for managing all users.
     """
-    queryset = User.objects.all()
+    queryset = User.objects.all().order_by('-id')
     serializer_class = UserSerializer
     permission_classes = [permissions.IsAuthenticated]
 
@@ -66,6 +66,7 @@ class UserViewSet(viewsets.ModelViewSet):
         return UserSerializer
 
 
+@method_decorator(csrf_exempt, name='dispatch')
 @method_decorator(csrf_exempt, name='dispatch')
 class LoginView(APIView):
     permission_classes = [permissions.AllowAny]

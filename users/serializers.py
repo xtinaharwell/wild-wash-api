@@ -54,6 +54,7 @@ class StaffCreateSerializer(serializers.ModelSerializer):
 
 class UserSerializer(serializers.ModelSerializer):
     service_location_display = serializers.SerializerMethodField()
+    created_at = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -69,13 +70,19 @@ class UserSerializer(serializers.ModelSerializer):
             "is_staff",
             "service_location",
             "service_location_display",
+            "date_joined",
+            "created_at",
         ]
-        read_only_fields = ["id", "is_staff"]
+        read_only_fields = ["id", "is_staff", "date_joined"]
 
     def get_service_location_display(self, obj):
         if obj.service_location:
             return obj.service_location.name
         return None
+    
+    def get_created_at(self, obj):
+        """Return date_joined as created_at for frontend compatibility"""
+        return obj.date_joined
 
 
 class UserCreateSerializer(serializers.ModelSerializer):
