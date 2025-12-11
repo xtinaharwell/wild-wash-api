@@ -149,6 +149,21 @@ class Order(models.Model):
         ]
 
 
+class OrderItem(models.Model):
+    """Track individual service items and their quantities in an order"""
+    order = models.ForeignKey(Order, related_name='order_items', on_delete=models.CASCADE)
+    service = models.ForeignKey(Service, related_name='order_items', on_delete=models.CASCADE)
+    quantity = models.IntegerField(default=1, help_text="Quantity of this service in the order")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = [['order', 'service']]
+        ordering = ['created_at']
+
+    def __str__(self):
+        return f"{self.order.code} - {self.service.name} x{self.quantity}"
+
+
 class OrderEvent(models.Model):
     """A lightweight audit/event record for actions taken on an Order.
 

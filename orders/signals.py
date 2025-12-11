@@ -38,8 +38,9 @@ def order_status_update(sender, instance, created, update_fields=None, **kwargs)
         except Exception as e:
             print(f"Error creating customer notification: {e}")
     
-    # Auto-assign and notify riders when a new order is created
-    if created and not instance.rider:
+    # Only auto-assign riders for manual orders created by staff
+    # Online orders should stay as 'requested' until staff marks them as 'ready'
+    if created and not instance.rider and instance.order_type == 'manual':
         try:
             service_location = instance.service_location
             
@@ -80,7 +81,7 @@ def order_status_update(sender, instance, created, update_fields=None, **kwargs)
                     assigned_rider = riders.first()
                     instance.rider = assigned_rider
                     instance.service_location = service_location
-                    instance.status = 'in_progress'  # Set to in_progress when assigned
+                    instance.status = 'pending_assignment'  # Keep status as pending_assignment for manual orders
                     instance.save(update_fields=['rider', 'status', 'service_location'])
                     
                     # Notify the assigned rider
@@ -103,7 +104,7 @@ def order_status_update(sender, instance, created, update_fields=None, **kwargs)
                         assigned_rider = all_riders.first()
                         instance.rider = assigned_rider
                         instance.service_location = service_location
-                        instance.status = 'in_progress'
+                        instance.status = 'pending_assignment'
                         instance.save(update_fields=['rider', 'status', 'service_location'])
                         
                         message = f"Order {instance.code} assigned to you (alternate location). Pickup: {instance.pickup_address[:50]}..."

@@ -1,7 +1,7 @@
 # orders/serializers.py
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from .models import Order
+from .models import Order, OrderItem
 from services.models import Service
 from users.models import Location
 from decimal import Decimal
@@ -25,6 +25,12 @@ class OrderCreateSerializer(serializers.ModelSerializer):
         queryset=Location.objects.filter(is_active=True),
         required=False
     )
+    # Accept service quantities as a list of {service_id, quantity} objects
+    service_quantities = serializers.ListField(
+        child=serializers.DictField(child=serializers.IntegerField()),
+        write_only=True,
+        required=False
+    )
     total_price = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
@@ -46,6 +52,7 @@ class OrderCreateSerializer(serializers.ModelSerializer):
             "actual_price",
             "total_price",
             "estimated_delivery",
+            "service_quantities",
             # Manual order fields
             "order_type",
             "drop_off_type",
@@ -157,6 +164,8 @@ class OrderCreateSerializer(serializers.ModelSerializer):
         
         # Extract services list for M2M
         services = validated_data.pop('services', [])
+        # Extract service_quantities if provided
+        service_quantities = validated_data.pop('service_quantities', [])
         
         # If no services in list but single service provided, use that
         if not services and 'service' in validated_data and order_type != "manual":
@@ -180,6 +189,30 @@ class OrderCreateSerializer(serializers.ModelSerializer):
             if not order.service:
                 order.service = services[0]
                 order.save(update_fields=['service'])
+            
+            # Create OrderItem entries with quantities
+            if service_quantities:
+                for sq in service_quantities:
+                    service_id = sq.get('service_id')
+                    quantity = sq.get('quantity', 1)
+                    if service_id and quantity > 0:
+                        try:
+                            service = Service.objects.get(pk=service_id)
+                            OrderItem.objects.update_or_create(
+                                order=order,
+                                service=service,
+                                defaults={'quantity': quantity}
+                            )
+                        except Service.DoesNotExist:
+                            pass
+            else:
+                # If no quantities provided, create OrderItems with default quantity of 1
+                for service in services:
+                    OrderItem.objects.update_or_create(
+                        order=order,
+                        service=service,
+                        defaults={'quantity': 1}
+                    )
         
         order.code = f"WW-{order.id:05d}"
         order.save(update_fields=["code"])
@@ -189,6 +222,19 @@ class OrderCreateSerializer(serializers.ModelSerializer):
         """Calculate total price from all services"""
         total = sum(service.price for service in obj.services.all())
         return float(total) if total else 0
+
+
+class OrderItemSerializer(serializers.ModelSerializer):
+    service_name = serializers.CharField(source='service.name', read_only=True)
+    service_price = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = OrderItem
+        fields = ['id', 'service', 'service_name', 'service_price', 'quantity']
+        read_only_fields = ['id']
+    
+    def get_service_price(self, obj):
+        return float(obj.service.price) if obj.service.price else 0
 
 
 class OrderListSerializer(serializers.ModelSerializer):
@@ -206,6 +252,7 @@ class OrderListSerializer(serializers.ModelSerializer):
     pickup_location = serializers.SerializerMethodField()
     dropoff_location = serializers.SerializerMethodField()
     timeline = serializers.SerializerMethodField()
+    order_items = serializers.SerializerMethodField()
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -264,6 +311,11 @@ class OrderListSerializer(serializers.ModelSerializer):
         """Return list of services with their details"""
         services = obj.services.all().values('id', 'name', 'price')
         return list(services)
+
+    def get_order_items(self, obj):
+        """Return order items with quantities"""
+        items = obj.order_items.all()
+        return OrderItemSerializer(items, many=True).data
 
     def get_timeline(self, obj):
         """Return the order events/timeline for admin users or an empty list for others.
@@ -382,6 +434,7 @@ class OrderListSerializer(serializers.ModelSerializer):
             "rider",
             "created_by",
             "timeline",
+            "order_items",
             # Manual order fields
             "order_type",
             "drop_off_type",
