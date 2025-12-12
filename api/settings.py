@@ -230,4 +230,11 @@ CORS_ALLOW_METHODS = [
 ]
 
 
+# M-Pesa Configuration
+MPESA_CONSUMER_KEY = os.getenv('MPESA_CONSUMER_KEY', '')
+MPESA_CONSUMER_SECRET = os.getenv('MPESA_CONSUMER_SECRET', '')
+MPESA_BUSINESS_SHORTCODE = os.getenv('MPESA_BUSINESS_SHORTCODE', '')
+MPESA_PASSKEY = os.getenv('MPESA_PASSKEY', '')
+MPESA_CALLBACK_URL = os.getenv('MPESA_CALLBACK_URL', 'https://api.wildwash.co.ke/api/payments/mpesa/callback/')
+
 
