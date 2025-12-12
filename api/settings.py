@@ -205,6 +205,7 @@ CORS_ALLOWED_ORIGINS = [
     "https://3000-firebase-wildwashgit-1760698481871.cluster-ikslh4rdsnbqsvu5nw3v4dqjj2.cloudworkstations.dev",
     "https://wildwash.kibeezy.com",
     "https://wildwash.co.ke",
+    "api.wildwash.co.ke",
     "https://api.wildwash.co.ke",    
     "http://localhost:3000",
     "http://127.0.0.1:3000",

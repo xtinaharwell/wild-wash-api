@@ -422,3 +422,49 @@ class OrderListCreateView(generics.ListCreateAPIView):
         ctx = super().get_serializer_context()
         ctx["request"] = self.request
         return ctx
+
+
+class OrderPaymentStatusView(APIView):
+    """
+    GET -> Get payment status for an order
+    Retrieves the payment information associated with an order
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, code, *args, **kwargs):
+        try:
+            # Try to get the order by code (order reference/id)
+            order = Order.objects.get(code=code)
+            
+            # Check if user has permission to view this order
+            if order.user != request.user and not request.user.is_staff:
+                return Response(
+                    {'detail': 'You do not have permission to view this order'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            
+            # Get the latest payment for this order
+            from payments.models import Payment
+            try:
+                payment = Payment.objects.filter(order_id=order.id).latest('created_at')
+                return Response({
+                    'status': payment.status,
+                    'message': f'Payment is {payment.status}',
+                    'checkout_request_id': payment.provider_reference,
+                    'order_id': order.code,
+                    'amount': float(payment.amount),
+                })
+            except Payment.DoesNotExist:
+                return Response({
+                    'status': 'pending',
+                    'message': 'No payment found for this order',
+                    'checkout_request_id': '',
+                    'order_id': order.code,
+                    'amount': 0,
+                }, status=status.HTTP_404_NOT_FOUND)
+                
+        except Order.DoesNotExist:
+            return Response(
+                {'detail': 'Order not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
