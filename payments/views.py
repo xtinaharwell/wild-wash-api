@@ -128,6 +128,8 @@ class MpesaSTKPushView(views.APIView):
         
         # Validate input
         if not all([amount, phone, order_id]):
+            error_msg = f'Missing required fields: amount={bool(amount)}, phone={bool(phone)}, order_id={bool(order_id)}'
+            logger.error(error_msg)
             return Response(
                 {'detail': 'amount, phone, and order_id are required'},
                 status=status.HTTP_400_BAD_REQUEST
@@ -179,8 +181,10 @@ class MpesaSTKPushView(views.APIView):
         try:
             # Verify credentials are set
             if not settings.MPESA_CONSUMER_KEY or not settings.MPESA_CONSUMER_SECRET:
+                error_msg = 'M-Pesa credentials not configured. Check your .env file for MPESA_CONSUMER_KEY and MPESA_CONSUMER_SECRET'
+                logger.error(error_msg)
                 return Response(
-                    {'detail': 'M-Pesa credentials not configured'},
+                    {'detail': error_msg},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR
                 )
             
@@ -206,6 +210,7 @@ class MpesaSTKPushView(views.APIView):
             )
             payment.mark_initiated(provider_reference=checkout_request_id)
             
+            logger.info(f"Payment initiated successfully: {checkout_request_id}")
             return Response({
                 'status': 'success',
                 'message': 'STK push sent to your phone',
