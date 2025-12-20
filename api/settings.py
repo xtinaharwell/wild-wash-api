@@ -237,4 +237,10 @@ MPESA_BUSINESS_SHORTCODE = os.getenv('MPESA_BUSINESS_SHORTCODE', '')
 MPESA_PASSKEY = os.getenv('MPESA_PASSKEY', '')
 MPESA_CALLBACK_URL = os.getenv('MPESA_CALLBACK_URL', 'https://api.wildwash.co.ke/api/payments/mpesa/callback/')
 
+# Africa's Talking Configuration
+AFRICAS_TALKING_API_KEY = os.getenv('AFRICAS_TALKING_API_KEY', '')
+AFRICAS_TALKING_USERNAME = os.getenv('AFRICAS_TALKING_USERNAME', 'sandbox')
+AFRICAS_TALKING_SENDER_ID = os.getenv('AFRICAS_TALKING_SENDER_ID', 'WILDWASH')
+ADMIN_PHONE_NUMBER = os.getenv('ADMIN_PHONE_NUMBER', '+254712345678')  # Default admin phone, update in .env
+
 
