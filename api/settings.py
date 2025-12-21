@@ -206,7 +206,7 @@ CORS_ALLOWED_ORIGINS = [
     "https://api.wildwash.co.ke",    
     "http://localhost:3000",
     "http://127.0.0.1:3000",
-    'http://127.0.0.1:8000',
+    "http://127.0.0.1:8000",
 ]
 CORS_ALLOW_CREDENTIALS = True
 from corsheaders.defaults import default_headers
@@ -234,5 +234,11 @@ MPESA_CONSUMER_SECRET = os.getenv('MPESA_CONSUMER_SECRET', '')
 MPESA_BUSINESS_SHORTCODE = os.getenv('MPESA_BUSINESS_SHORTCODE', '')
 MPESA_PASSKEY = os.getenv('MPESA_PASSKEY', '')
 MPESA_CALLBACK_URL = os.getenv('MPESA_CALLBACK_URL', 'https://api.wildwash.co.ke/api/payments/mpesa/callback/')
+
+# Africa's Talking Configuration
+AFRICAS_TALKING_API_KEY = os.getenv('AFRICAS_TALKING_API_KEY', '')
+AFRICAS_TALKING_USERNAME = os.getenv('AFRICAS_TALKING_USERNAME', 'sandbox')
+AFRICAS_TALKING_SENDER_ID = os.getenv('AFRICAS_TALKING_SENDER_ID', 'WILDWASH')
+ADMIN_PHONE_NUMBER = os.getenv('ADMIN_PHONE_NUMBER', '+254712345678')  # Default admin phone, update in .env
 
 

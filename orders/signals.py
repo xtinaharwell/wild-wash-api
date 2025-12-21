@@ -5,6 +5,10 @@ from .models import Order
 from notifications.models import Notification
 from django.contrib.auth import get_user_model
 from users.models import Location
+from django.conf import settings
+import logging
+
+logger = logging.getLogger(__name__)
 
 User = get_user_model()
 
@@ -37,6 +41,22 @@ def order_status_update(sender, instance, created, update_fields=None, **kwargs)
             )
         except Exception as e:
             print(f"Error creating customer notification: {e}")
+    
+    # Send SMS notification to admin when a new order is created
+    if created:
+        try:
+            from services.sms_service import send_order_notification_sms
+            admin_phone = settings.ADMIN_PHONE_NUMBER
+            
+            # Only send if API credentials are configured
+            if settings.AFRICAS_TALKING_API_KEY and admin_phone:
+                result = send_order_notification_sms(instance, admin_phone)
+                if result['status'] == 'success':
+                    logger.info(f"Admin SMS notification sent for order {instance.code}")
+                else:
+                    logger.warning(f"Failed to send admin SMS for order {instance.code}: {result.get('message')}")
+        except Exception as e:
+            logger.error(f"Error sending admin SMS notification for order {instance.code}: {str(e)}")
     
     # Only auto-assign riders for manual orders created by staff
     # Online orders should stay as 'requested' until staff marks them as 'ready'
@@ -124,4 +144,5 @@ def order_status_update(sender, instance, created, update_fields=None, **kwargs)
             print(f"Error in auto-assign logic for order {instance.code}: {e}")
             import traceback
             traceback.print_exc()
+
 
