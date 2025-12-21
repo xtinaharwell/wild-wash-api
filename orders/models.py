@@ -11,6 +11,7 @@ class Order(models.Model):
         ('requested', 'Requested'),
         ('picked', 'Picked Up'),
         ('in_progress', 'In Progress'),
+        ('washed', 'Washed'),
         ('ready', 'Ready for Delivery'),
         ('delivered', 'Delivered'),
         ('cancelled', 'Cancelled'),
@@ -120,6 +121,43 @@ class Order(models.Model):
         on_delete=models.SET_NULL,
         related_name="created_orders",
         help_text="Staff member who created this manual order"
+    )
+    # Track delivery request status
+    delivery_requested = models.BooleanField(
+        default=False,
+        help_text="Whether customer has requested delivery"
+    )
+    delivery_requested_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Timestamp when customer requested delivery"
+    )
+    # Track washing and folding workflow
+    washer = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="washed_orders",
+        help_text="Staff member who washed the order"
+    )
+    washed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Timestamp when order was washed"
+    )
+    folder = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="folded_orders",
+        help_text="Staff member who folded the order"
+    )
+    folded_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Timestamp when order was folded"
     )
 
 

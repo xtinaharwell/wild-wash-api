@@ -19,6 +19,14 @@ class User(AbstractUser):
         ("rider", "Rider"),
         ("admin", "Admin"),
         ("staff", "Staff"),
+        ("washer", "Washer"),
+        ("folder", "Folder"),
+    )
+
+    STAFF_TYPE_CHOICES = (
+        ("general", "General Staff"),
+        ("washer", "Washer"),
+        ("folder", "Folder"),
     )
 
     phone = models.CharField(max_length=20)  # Required phone number
@@ -35,6 +43,12 @@ class User(AbstractUser):
     # Customer's default pickup address for bookings
     pickup_address = models.TextField(blank=True, null=True, help_text="Default pickup address for service bookings")
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default="customer")
+    staff_type = models.CharField(
+        max_length=20,
+        choices=STAFF_TYPE_CHOICES,
+        default="general",
+        help_text="Type of staff: General, Washer, or Folder"
+    )
     is_location_admin = models.BooleanField(
         default=False,
         help_text="Designates whether this user can manage other users in their location"

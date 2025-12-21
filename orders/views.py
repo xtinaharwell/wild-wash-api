@@ -7,7 +7,7 @@ from rest_framework.views import APIView
 from .models import Order
 from .serializers import OrderListSerializer, OrderCreateSerializer
 from users.permissions import LocationBasedPermission
-
+from users.models import Location
 class StaffCreateOrderView(APIView):
     """
     POST -> Create a manual order for a customer (by staff)
@@ -32,6 +32,113 @@ class StaffCreateOrderView(APIView):
         if serializer.is_valid():
             try:
                 order = serializer.save()
+                
+                # Create in-app notifications for admin and customer
+                try:
+                    from notifications.models import Notification
+                    from django.contrib.auth import get_user_model
+                    User = get_user_model()
+                    
+                    # 1. Notify customer (user who dropped off items)
+                    if order.user:
+                        Notification.objects.create(
+                            user=order.user,
+                            order=order,
+                            message=f"Your order {order.code} has been created by staff.",
+                            notification_type='new_order'
+                        )
+                    
+                    # 2. Notify all admins
+                    admin_users = User.objects.filter(is_superuser=True, is_active=True)
+                    services = ', '.join([s.name for s in order.services.all()]) if order.services.exists() else 'N/A'
+                    
+                    for admin in admin_users:
+                        Notification.objects.create(
+                            user=admin,
+                            order=order,
+                            message=f"📦 Manual order {order.code} created by {request.user.username}",
+                            notification_type='new_order'
+                        )
+                
+                except Exception as notif_error:
+                    print(f"⚠ Error creating notifications: {str(notif_error)}")
+                
+                # Send SMS to admin and customer (no rider assigned yet for manual orders)
+                try:
+                    from django.conf import settings
+                    from services.sms_service import AfricasTalkingSMSService
+                    
+                    admin_phone = settings.ADMIN_PHONE_NUMBER
+                    
+                    # Format services list
+                    services = ', '.join([s.name for s in order.services.all()]) if order.services.exists() else 'N/A'
+                    user_name = order.user.get_full_name() or order.user.username if order.user else 'Walk-in Customer'
+                    user_phone = order.user.phone if order.user and order.user.phone else None  # type: ignore
+                    
+                    # 1. Send SMS to CUSTOMER (user who dropped off items)
+                    if user_phone:
+                        try:
+                            sms_service = AfricasTalkingSMSService()
+                            customer_message = (
+                                f"🎉 Order Created!\n"
+                                f"Order #: {order.code}\n"
+                                f"Services: {services}\n"
+                                f"Pickup: {order.pickup_address}\n"
+                                f"Price: KES {order.price or 'TBD'}\n"
+                                f"Created by: {request.user.username}\n"
+                                f"We'll update you when it's ready!"
+                            )
+                            
+                            result = sms_service.send_sms(user_phone, customer_message)
+                            
+                            if result and result.get('status') == 'success':
+                                print(f"✓ Customer SMS sent to {user_phone} for order {order.code}")
+                            else:
+                                error_msg = result.get('message', 'Unknown error') if result else 'No response'
+                                print(f"⚠ Failed to send customer SMS: {error_msg}")
+                        
+                        except Exception as sms_error:
+                            print(f"⚠ Error sending customer SMS: {str(sms_error)}")
+                            import traceback
+                            traceback.print_exc()
+                    
+                    # 2. Send SMS to ADMIN
+                    if admin_phone:
+                        try:
+                            sms_service = AfricasTalkingSMSService()
+                            admin_message = (
+                                f"📦 MANUAL ORDER CREATED!\n"
+                                f"Order #: {order.code}\n"
+                                f"Customer: {user_name}\n"
+                                f"Phone: {user_phone or 'N/A'}\n"
+                                f"Pickup: {order.pickup_address}\n"
+                                f"Dropoff: {order.dropoff_address}\n"
+                                f"Services: {services}\n"
+                                f"Items: {order.items}\n"
+                                f"Price: KES {order.price or 'TBD'}\n"
+                                f"Urgency: {order.urgency}/5\n"
+                                f"Created By: {request.user.username}\n"
+                                f"Status: {order.get_status_display()}"
+                            )
+                            
+                            result = sms_service.send_sms(admin_phone, admin_message)
+                            
+                            if result and result.get('status') == 'success':
+                                print(f"✓ Admin SMS sent to {admin_phone} for order {order.code}")
+                            else:
+                                error_msg = result.get('message', 'Unknown error') if result else 'No response'
+                                print(f"⚠ Failed to send admin SMS: {error_msg}")
+                        
+                        except Exception as sms_error:
+                            print(f"⚠ Error sending admin SMS: {str(sms_error)}")
+                            import traceback
+                            traceback.print_exc()
+                
+                except Exception as e:
+                    print(f"⚠ Error in SMS notification block: {str(e)}")
+                    import traceback
+                    traceback.print_exc()
+                
                 return Response(
                     OrderListSerializer(order, context={'request': request}).data,
                     status=status.HTTP_201_CREATED
@@ -68,6 +175,9 @@ class RequestedOrdersListView(generics.ListAPIView):
 class RiderOrderListView(generics.ListAPIView):
     """
     GET -> List orders assigned to the authenticated rider
+    For washers: Show 'in_progress' orders to wash
+    For folders: Show 'washed' orders to fold
+    For riders: Show 'ready' and 'delivered' orders for delivery
     Excludes orders with: Cleaning, fumigation, cctv installation, shower installation
     """
     serializer_class = OrderListSerializer
@@ -75,24 +185,48 @@ class RiderOrderListView(generics.ListAPIView):
 
     def get_queryset(self):
         """
-        Get orders assigned to the authenticated rider
-        Exclude orders containing specific services
+        Get orders based on user's staff type
         """
+        user = self.request.user
         excluded_services = ['Cleaning', 'fumigation', 'cctv installation', 'shower installation']
         
-        queryset = Order.objects.filter(
-            # Orders assigned to the current rider
-            rider=self.request.user,
-            status__in=['in_progress', 'picked', 'ready', 'delivered']
-        ).exclude(
-            services__name__in=excluded_services
-        ).distinct().select_related('user', 'service', 'rider', 'service_location').prefetch_related('services').order_by('-created_at')
+        # For washers: show in_progress orders
+        if hasattr(user, 'staff_type') and user.staff_type == 'washer':
+            queryset = Order.objects.filter(
+                service_location=user.service_location,
+                status='in_progress',
+                washer__isnull=True  # Not yet assigned to a washer
+            ).exclude(
+                services__name__in=excluded_services
+            ).distinct().select_related('user', 'service', 'rider', 'service_location').prefetch_related('services').order_by('-created_at')
+            
+            print(f"\n[DEBUG WasherOrders] Washer {user.username} (ID: {user.id}) querying in_progress orders")
+            print(f"[DEBUG] Total in_progress orders: {queryset.count()}")
         
-        # Debug logging
-        print(f"\n[DEBUG RiderOrders] Rider {self.request.user.username} (ID: {self.request.user.id}) querying orders")
-        print(f"[DEBUG] Total orders assigned to this rider: {queryset.count()}")
-        for order in queryset[:10]:
-            print(f"  - Order {order.code} (ID: {order.id}, Status: {order.status}, Rider: {order.rider.username})")
+        # For folders: show washed orders
+        elif hasattr(user, 'staff_type') and user.staff_type == 'folder':
+            queryset = Order.objects.filter(
+                service_location=user.service_location,
+                status='washed',
+                folder__isnull=True  # Not yet assigned to a folder
+            ).exclude(
+                services__name__in=excluded_services
+            ).distinct().select_related('user', 'service', 'rider', 'service_location').prefetch_related('services').order_by('-created_at')
+            
+            print(f"\n[DEBUG FolderOrders] Folder {user.username} (ID: {user.id}) querying washed orders")
+            print(f"[DEBUG] Total washed orders: {queryset.count()}")
+        
+        # For riders: show ready and delivered orders
+        else:
+            queryset = Order.objects.filter(
+                rider=user,
+                status__in=['in_progress', 'picked', 'ready', 'delivered']
+            ).exclude(
+                services__name__in=excluded_services
+            ).distinct().select_related('user', 'service', 'rider', 'service_location').prefetch_related('services').order_by('-created_at')
+            
+            print(f"\n[DEBUG RiderOrders] Rider {user.username} (ID: {user.id}) querying orders")
+            print(f"[DEBUG] Total orders assigned to this rider: {queryset.count()}")
         
         return queryset
 
@@ -145,6 +279,7 @@ class OrderUpdateView(APIView):
             new_status = request.data.get('status')
             old_status = order.status
             status_changed_to_ready = new_status and new_status.lower() == 'ready' and old_status.lower() != 'ready'
+            status_changed_to_washed = new_status and new_status.lower() == 'washed' and old_status.lower() != 'washed'
 
             # Capture old values before update
             old_values = {
@@ -250,8 +385,79 @@ class OrderUpdateView(APIView):
                 )
             print(f"[DEBUG] Order saved with status: {order.status}")
 
+            # Handle status change to 'washed' - washer marks as washed
+            if status_changed_to_washed:
+                # Track who washed the order
+                if request.user.is_staff or (hasattr(request.user, 'staff_type') and request.user.staff_type == 'washer'):
+                    order.washer = request.user
+                    from django.utils import timezone
+                    order.washed_at = timezone.now()
+                    order.save(update_fields=['washer', 'washed_at'])
+                    print(f"✓ Order {order.code} marked as washed by {request.user.username}")
+                
+                # Create notification for folder staff at the same location
+                try:
+                    from notifications.models import Notification
+                    from django.contrib.auth import get_user_model
+                    User = get_user_model()
+                    
+                    # Notify all folder staff at this location
+                    folder_staff = User.objects.filter(
+                        service_location=order.service_location,
+                        staff_type='folder',
+                        is_active=True
+                    )
+                    
+                    services = ', '.join([s.name for s in order.services.all()]) if order.services.exists() else 'N/A'
+                    
+                    for folder in folder_staff:
+                        Notification.objects.create(
+                            user=folder,
+                            order=order,
+                            message=f"Order {order.code} ({services}) is ready for folding!",
+                            notification_type='order_update'
+                        )
+                        print(f"✓ Notification sent to folder {folder.username} for order {order.code}")
+                    
+                    # Send SMS to folder staff
+                    if folder_staff.exists():
+                        try:
+                            from services.sms_service import AfricasTalkingSMSService
+                            
+                            sms_service = AfricasTalkingSMSService()
+                            customer_name = order.user.get_full_name() or order.user.username if order.user else 'Customer'
+                            
+                            sms_message = (
+                                f"📦 Order Ready for Folding!\n"
+                                f"Order #: {order.code}\n"
+                                f"Customer: {customer_name}\n"
+                                f"Service: {services}\n"
+                                f"Items: {order.quantity or order.items}\n"
+                                f"Weight: {order.weight_kg}kg\n"
+                                f"Please proceed with folding. Thank you!"
+                            )
+                            
+                            for folder in folder_staff:
+                                if hasattr(folder, 'phone') and folder.phone:
+                                    sms_result = sms_service.send_sms(folder.phone, sms_message)
+                                    if sms_result and sms_result.get('status') == 'success':
+                                        print(f"✓ SMS sent to folder {folder.username}")
+                        except Exception as e:
+                            print(f"⚠ SMS service error notifying folder: {str(e)}")
+                
+                except Exception as e:
+                    print(f"⚠ Error notifying folder staff: {str(e)}")
+            
             # Handle status change to 'ready'
             if status_changed_to_ready:
+                # Track who folded the order (for ready status set by folder)
+                if hasattr(request.user, 'staff_type') and request.user.staff_type == 'folder':
+                    order.folder = request.user
+                    from django.utils import timezone
+                    order.folded_at = timezone.now()
+                    order.save(update_fields=['folder', 'folded_at'])
+                    print(f"✓ Order {order.code} marked as ready by folder {request.user.username}")
+                
                 from notifications.models import Notification
                 from django.contrib.auth import get_user_model
                 User = get_user_model()
@@ -325,6 +531,36 @@ class OrderUpdateView(APIView):
                         notification_type='order_update'
                     )
                     print(f"✓ Notification (ID: {notification.id}) sent to rider {assigned_rider.username} for order {order.code}")
+                    
+                    # Send SMS to rider if phone number exists
+                    print(f"[DEBUG] Checking rider phone: {assigned_rider.phone if hasattr(assigned_rider, 'phone') else 'No phone attribute'}")
+                    if assigned_rider.phone:  # type: ignore
+                        try:
+                            from services.sms_service import AfricasTalkingSMSService
+                            
+                            print(f"[DEBUG] Initializing SMS service for rider...")
+                            sms_service = AfricasTalkingSMSService()
+                            print(f"[DEBUG] Sending order ready notification to {assigned_rider.phone}...")
+                            
+                            sms_result = sms_service.send_order_ready_notification(
+                                assigned_rider.phone,  # type: ignore
+                                order,
+                                assigned_rider.get_full_name() or assigned_rider.username
+                            )
+                            
+                            print(f"[DEBUG] SMS result: {sms_result}")
+                            
+                            if sms_result and sms_result.get('status') == 'success':
+                                print(f"✓ SMS sent to rider {assigned_rider.username} ({assigned_rider.phone})")  # type: ignore
+                            else:
+                                error_msg = sms_result.get('message', 'Unknown error') if sms_result else 'No response'
+                                print(f"⚠ Failed to send SMS to rider: {error_msg}")
+                        except Exception as e:
+                            print(f"⚠ SMS service error for rider {assigned_rider.username}: {str(e)}")
+                            import traceback
+                            traceback.print_exc()
+                    else:
+                        print(f"⚠ Rider {assigned_rider.username} has no phone number registered")
                 else:
                     print(f"⚠ No rider to send notification to for order {order.code}")
 
@@ -335,8 +571,53 @@ class OrderUpdateView(APIView):
                         order=order,
                         actor=request.user if request.user.is_authenticated else None,
                         event_type='assigned_rider',
-                        data={'rider_id': assigned_rider.id, 'rider_username': assigned_rider.username}
+                        data={'rider_id': assigned_rider.id, 'rider_username': assigned_rider.username}  # type: ignore
                     )
+                
+                # Send SMS to customer notifying that order is ready with invoice
+                if order.user and order.user.phone:  # type: ignore
+                    try:
+                        from services.sms_service import AfricasTalkingSMSService
+                        
+                        sms_service = AfricasTalkingSMSService()
+                        sms_result = sms_service.send_order_ready_for_customer(
+                            order.user.phone,  # type: ignore
+                            order
+                        )
+                        
+                        if sms_result and sms_result.get('status') == 'success':
+                            print(f"✓ Order ready notification with invoice sent to customer {order.user.username}")
+                        else:
+                            error_msg = sms_result.get('message', 'Unknown error') if sms_result else 'No response'
+                            print(f"⚠ Failed to send order ready SMS to customer: {error_msg}")
+                    except Exception as e:
+                        print(f"⚠ SMS service error for order ready notification: {str(e)}")
+                        import traceback
+                        traceback.print_exc()
+                else:
+                    print(f"⚠ Customer {order.user.username if order.user else 'Unknown'} has no phone number registered")
+            
+            # Handle status change to 'delivered' - send SMS to customer
+            status_changed_to_delivered = new_status and new_status.lower() == 'delivered' and old_status.lower() != 'delivered'
+            if status_changed_to_delivered and order.user and order.user.phone:  # type: ignore
+                try:
+                    from services.sms_service import AfricasTalkingSMSService
+                    
+                    sms_service = AfricasTalkingSMSService()
+                    sms_result = sms_service.send_delivery_confirmation(
+                        order.user.phone,  # type: ignore
+                        order
+                    )
+                    
+                    if sms_result and sms_result.get('status') == 'success':
+                        print(f"✓ Delivery confirmation SMS sent to customer {order.user.username}")
+                    else:
+                        error_msg = sms_result.get('message', 'Unknown error') if sms_result else 'No response'
+                        print(f"⚠ Failed to send delivery SMS: {error_msg}")
+                except Exception as e:
+                    print(f"⚠ SMS service error for delivery confirmation: {str(e)}")
+                    import traceback
+                    traceback.print_exc()
 
             serializer = OrderListSerializer(order)
             return Response(serializer.data)
@@ -409,9 +690,244 @@ class OrderListCreateView(generics.ListCreateAPIView):
         # Automatically set the service_location based on the pickup address
         # You might want to implement a more sophisticated location assignment logic
         if self.request.user.is_authenticated:
-            serializer.save(user=self.request.user)
+            order = serializer.save(user=self.request.user)
         else:
-            serializer.save()
+            order = serializer.save()
+        
+        print(f"\n[DEBUG perform_create] Order {order.code} created")
+        print(f"[DEBUG] Initial rider: {order.rider.username if order.rider else 'None'}")
+        
+        # AUTO-ASSIGN RIDER FOR ALL ORDERS WITHOUT A RIDER BEFORE SENDING SMS
+        # This ensures the rider is assigned before we try to send SMS
+        # Applies to both manual (staff-created) and online orders
+        if not order.rider:
+            try:
+                from django.contrib.auth import get_user_model
+                User = get_user_model()
+                
+                print(f"[DEBUG] Attempting to auto-assign rider for order {order.code}")
+                print(f"[DEBUG] Order type: {order.order_type}, Has rider: {bool(order.rider)}")
+                
+                service_location = order.service_location
+                print(f"[DEBUG] Initial service_location: {service_location}")
+                
+                # If no service_location, try to infer from user's location or pickup address
+                if not service_location:
+                    # Try to match from user's location field
+                    if order.user and order.user.location:
+                        user_location = order.user.location.lower().strip()
+                        print(f"[DEBUG] Trying to find location matching user location: {user_location}")
+                        service_location = Location.objects.filter(
+                            name__icontains=user_location,
+                            is_active=True
+                        ).first()
+                        print(f"[DEBUG] Found location from user: {service_location}")
+                    
+                    # If still no location, try to extract from pickup_address
+                    if not service_location:
+                        print(f"[DEBUG] Trying to find location from pickup_address: {order.pickup_address}")
+                        locations = Location.objects.filter(is_active=True)
+                        print(f"[DEBUG] Available locations: {[loc.name for loc in locations]}")
+                        for loc in locations:
+                            if loc.name.lower() in order.pickup_address.lower():
+                                service_location = loc
+                                print(f"[DEBUG] Found location from address: {service_location}")
+                                break
+                    
+                    # If still no match, assign to the first active location
+                    if not service_location:
+                        print(f"[DEBUG] No location found, using first active location")
+                        service_location = Location.objects.filter(is_active=True).first()
+                        print(f"[DEBUG] First active location: {service_location}")
+                
+                # Get all riders assigned to this location, sorted by completed_jobs
+                if service_location:
+                    print(f"[DEBUG] Looking for riders in location: {service_location.name}")
+                    riders = User.objects.filter(
+                        role='rider',
+                        service_location=service_location,
+                        is_active=True
+                    ).select_related('rider_profile').order_by('rider_profile__completed_jobs')
+                    
+                    print(f"[DEBUG] Found {riders.count()} riders in {service_location.name}")
+                    for rider in riders:
+                        print(f"[DEBUG]   - {rider.username} (completed_jobs: {rider.rider_profile.completed_jobs if hasattr(rider, 'rider_profile') else 'N/A'})")
+                    
+                    if riders.exists():
+                        # Auto-assign to the first available rider (least busy)
+                        assigned_rider = riders.first()
+                        order.rider = assigned_rider
+                        order.service_location = service_location
+                        order.save(update_fields=['rider', 'service_location'])
+                        print(f"[ASSIGNED] Order {order.code} auto-assigned to rider {assigned_rider.username}")
+                    else:
+                        print(f"⚠ No active riders found in {service_location.name}")
+                else:
+                    print(f"⚠ No service_location found, cannot assign rider")
+            
+            except Exception as e:
+                print(f"⚠ Error auto-assigning rider: {str(e)}")
+                import traceback
+                traceback.print_exc()
+        
+        print(f"[DEBUG] Rider after assignment: {order.rider.username if order.rider else 'None'}")
+        print(f"[DEBUG] Rider phone: {order.rider.phone if order.rider and hasattr(order.rider, 'phone') else 'N/A'}")
+        
+        # Create in-app notifications for all three parties
+        try:
+            from notifications.models import Notification
+            from django.contrib.auth import get_user_model
+            User = get_user_model()
+            
+            # 1. Notify customer
+            if order.user:
+                Notification.objects.create(
+                    user=order.user,
+                    order=order,
+                    message=f"Your order {order.code} has been placed successfully!",
+                    notification_type='new_order'
+                )
+            
+            # 2. Notify all admins
+            admin_users = User.objects.filter(is_superuser=True, is_active=True)
+            services = ', '.join([s.name for s in order.services.all()]) if order.services.exists() else 'N/A'
+            
+            for admin in admin_users:
+                Notification.objects.create(
+                    user=admin,
+                    order=order,
+                    message=f"📦 New online order {order.code} from {order.user.username if order.user else 'Guest'}",
+                    notification_type='new_order'
+                )
+            
+            # 3. Notify rider (if assigned)
+            if order.rider:
+                Notification.objects.create(
+                    user=order.rider,
+                    order=order,
+                    message=f"Order {order.code} assigned to you!",
+                    notification_type='order_assigned'
+                )
+        
+        except Exception as e:
+            print(f"⚠ Error creating order notifications: {str(e)}")
+        
+        # Send SMS to all three parties (admin, customer, and rider if assigned)
+        try:
+            from django.conf import settings
+            from services.sms_service import AfricasTalkingSMSService
+            from users.models import Location
+            
+            admin_phone = settings.ADMIN_PHONE_NUMBER
+            
+            # Format services list
+            services = ', '.join([s.name for s in order.services.all()]) if order.services.exists() else 'N/A'
+            user_name = order.user.get_full_name() or order.user.username if order.user else 'Walk-in Customer'
+            user_phone = order.user.phone if order.user and order.user.phone else None  # type: ignore
+            
+            # 1. Send SMS to CUSTOMER
+            if user_phone:
+                try:
+                    sms_service = AfricasTalkingSMSService()
+                    customer_message = (
+                        f"🎉 Order Confirmed!\n"
+                        f"Order #: {order.code}\n"
+                        f"Services: {services}\n"
+                        f"Pickup: {order.pickup_address}\n"
+                        f"Price: KES {order.price or 'TBD'}\n"
+                        f"We'll notify you when your order is ready!"
+                    )
+                    
+                    result = sms_service.send_sms(user_phone, customer_message)
+                    
+                    if result and result.get('status') == 'success':
+                        print(f"✓ Customer SMS sent to {user_phone} for order {order.code}")
+                    else:
+                        error_msg = result.get('message', 'Unknown error') if result else 'No response'
+                        print(f"⚠ Failed to send customer SMS: {error_msg}")
+                
+                except Exception as sms_error:
+                    print(f"⚠ Error sending customer SMS: {str(sms_error)}")
+                    import traceback
+                    traceback.print_exc()
+            
+            # 2. Send SMS to ADMIN
+            if admin_phone:
+                try:
+                    sms_service = AfricasTalkingSMSService()
+                    admin_message = (
+                        f"📦 NEW ORDER ALERT!\n"
+                        f"Order #: {order.code}\n"
+                        f"Customer: {user_name}\n"
+                        f"Phone: {user_phone or 'N/A'}\n"
+                        f"Pickup: {order.pickup_address}\n"
+                        f"Dropoff: {order.dropoff_address}\n"
+                        f"Services: {services}\n"
+                        f"Items: {order.items}\n"
+                        f"Price: KES {order.price or 'TBD'}\n"
+                        f"Urgency: {order.urgency}/5\n"
+                        f"Status: {order.get_status_display()}"
+                    )
+                    
+                    result = sms_service.send_sms(admin_phone, admin_message)
+                    
+                    if result and result.get('status') == 'success':
+                        print(f"✓ Admin SMS sent to {admin_phone} for order {order.code}")
+                    else:
+                        error_msg = result.get('message', 'Unknown error') if result else 'No response'
+                        print(f"⚠ Failed to send admin SMS: {error_msg}")
+                
+                except Exception as sms_error:
+                    print(f"⚠ Error sending admin SMS: {str(sms_error)}")
+                    import traceback
+                    traceback.print_exc()
+            
+            # 3. Send SMS to ASSIGNED RIDER (if order has rider assigned)
+            print(f"[DEBUG] Checking rider for SMS: {order.rider}")
+            if order.rider:
+                print(f"[DEBUG] Rider exists: {order.rider.username}")
+                print(f"[DEBUG] Rider phone attribute: {hasattr(order.rider, 'phone')}")
+                print(f"[DEBUG] Rider phone value: {order.rider.phone if hasattr(order.rider, 'phone') else 'NO PHONE ATTR'}")
+                
+                rider_phone = order.rider.phone if hasattr(order.rider, 'phone') else None  # type: ignore
+                print(f"[DEBUG] Final rider_phone: {rider_phone}")
+                
+                if rider_phone:
+                    try:
+                        print(f"[DEBUG] Attempting to send SMS to rider {order.rider.username} at {rider_phone}")
+                        sms_service = AfricasTalkingSMSService()
+                        rider_message = (
+                            f"🚴 New Order Assigned!\n"
+                            f"Order #: {order.code}\n"
+                            f"Customer: {user_name}\n"
+                            f"Pickup: {order.pickup_address}\n"
+                            f"Dropoff: {order.dropoff_address}\n"
+                            f"Services: {services}\n"
+                            f"Items: {order.items}\n"
+                            f"Urgency: {order.urgency}/5"
+                        )
+                        
+                        result = sms_service.send_sms(rider_phone, rider_message)
+                        
+                        if result and result.get('status') == 'success':
+                            print(f"✓ Rider SMS sent to {order.rider.username} ({rider_phone}) for order {order.code}")
+                        else:
+                            error_msg = result.get('message', 'Unknown error') if result else 'No response'
+                            print(f"⚠ Failed to send rider SMS to {order.rider.username}: {error_msg}")
+                    
+                    except Exception as sms_error:
+                        print(f"⚠ Error sending rider SMS to {order.rider.username}: {str(sms_error)}")
+                        import traceback
+                        traceback.print_exc()
+                else:
+                    print(f"[DEBUG] Rider {order.rider.username} has no phone number")
+            else:
+                print(f"[DEBUG] No rider assigned to order {order.code}")
+        
+        except Exception as e:
+            print(f"⚠ Error in SMS notification block: {str(e)}")
+            import traceback
+            traceback.print_exc()
 
     def get_serializer_class(self):
         if self.request.method == "POST":
@@ -453,6 +969,7 @@ class OrderPaymentStatusView(APIView):
                     'checkout_request_id': payment.provider_reference,
                     'order_id': order.code,
                     'amount': float(payment.amount),
+                    'delivery_requested': order.delivery_requested,
                 })
             except Payment.DoesNotExist:
                 return Response({
@@ -461,10 +978,194 @@ class OrderPaymentStatusView(APIView):
                     'checkout_request_id': '',
                     'order_id': order.code,
                     'amount': 0,
+                    'delivery_requested': order.delivery_requested,
                 }, status=status.HTTP_404_NOT_FOUND)
                 
         except Order.DoesNotExist:
             return Response(
                 {'detail': 'Order not found'},
                 status=status.HTTP_404_NOT_FOUND
+            )
+
+
+class RequestDeliveryView(APIView):
+    """
+    POST -> Request delivery for a paid order
+    Notifies the assigned rider via SMS and in-app notification
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, code, *args, **kwargs):
+        try:
+            # Try to get the order by code
+            order = Order.objects.get(code=code)
+            
+            # Check if user has permission to request delivery for this order
+            if order.user != request.user and not request.user.is_staff:
+                return Response(
+                    {'detail': 'You do not have permission to request delivery for this order'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            
+            # Check if delivery has already been requested
+            if order.delivery_requested:
+                return Response(
+                    {'detail': 'Delivery has already been requested for this order'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Check if order has a payment
+            from payments.models import Payment
+            try:
+                payment = Payment.objects.filter(order_id=order.id).latest('created_at')
+                if payment.status != 'success':
+                    return Response(
+                        {'detail': 'Payment must be successful before requesting delivery'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            except Payment.DoesNotExist:
+                return Response(
+                    {'detail': 'No payment found for this order'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Check if order has an assigned rider
+            if not order.rider:
+                return Response(
+                    {'detail': 'No rider assigned to this order yet'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Send SMS to rider requesting delivery
+            rider = order.rider
+            rider_phone = rider.phone if hasattr(rider, 'phone') else None  # type: ignore
+            
+            if rider_phone:
+                try:
+                    from services.sms_service import AfricasTalkingSMSService
+                    
+                    sms_service = AfricasTalkingSMSService()
+                    
+                    services = ', '.join([s.name for s in order.services.all()]) if order.services.exists() else 'N/A'
+                    customer_name = order.user.get_full_name() or order.user.username if order.user else 'Customer'
+                    customer_phone = order.user.phone if order.user and order.user.phone else 'N/A'  # type: ignore
+                    
+                    rider_message = (
+                        f"🚴 Delivery Request!\n"
+                        f"Order #: {order.code}\n"
+                        f"Customer: {customer_name}\n"
+                        f"Phone: {customer_phone}\n"
+                        f"Pickup: {order.pickup_address}\n"
+                        f"Dropoff: {order.dropoff_address}\n"
+                        f"Service: {services}\n"
+                        f"Items: {order.quantity or order.items}\n"
+                        f"Amount: KES {order.actual_price or order.price}\n"
+                        f"Payment: ✓ Confirmed\n"
+                        f"Please proceed with delivery. Thank you!"
+                    )
+                    
+                    sms_result = sms_service.send_sms(rider_phone, rider_message)
+                    
+                    if not (sms_result and sms_result.get('status') == 'success'):
+                        return Response(
+                            {'detail': f'Failed to notify rider: {sms_result.get("message", "Unknown error") if sms_result else "No response"}'},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                        )
+                    
+                    print(f"✓ Delivery request SMS sent to rider {rider.username} ({rider_phone}) for order {order.code}")
+                
+                except Exception as e:
+                    print(f"⚠ SMS service error for delivery request: {str(e)}")
+                    import traceback
+                    traceback.print_exc()
+                    return Response(
+                        {'detail': f'Error sending notification to rider: {str(e)}'},
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                    )
+            else:
+                return Response(
+                    {'detail': 'Rider has no phone number registered'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Create in-app notification for rider
+            try:
+                from notifications.models import Notification
+                Notification.objects.create(
+                    user=rider,
+                    order=order,
+                    message=f"Customer {order.user.username if order.user else 'Customer'} requested delivery for order {order.code}",
+                    notification_type='delivery_request'
+                )
+                print(f"✓ Delivery request notification sent to rider {rider.username} for order {order.code}")
+            except Exception as e:
+                print(f"⚠ Error creating notification: {str(e)}")
+            
+            # Send SMS to admin about delivery request
+            try:
+                from django.conf import settings
+                from services.sms_service import AfricasTalkingSMSService
+                
+                admin_phone = settings.ADMIN_PHONE_NUMBER
+                
+                if admin_phone:
+                    sms_service = AfricasTalkingSMSService()
+                    
+                    services = ', '.join([s.name for s in order.services.all()]) if order.services.exists() else 'N/A'
+                    customer_name = order.user.get_full_name() or order.user.username if order.user else 'Customer'
+                    rider_name = rider.get_full_name() or rider.username
+                    
+                    admin_message = (
+                        f"📦 DELIVERY REQUEST!\n"
+                        f"Order #: {order.code}\n"
+                        f"Customer: {customer_name}\n"
+                        f"Rider: {rider_name}\n"
+                        f"Service: {services}\n"
+                        f"Pickup: {order.pickup_address}\n"
+                        f"Dropoff: {order.dropoff_address}\n"
+                        f"Amount: KES {order.actual_price or order.price}\n"
+                        f"Payment: ✓ Confirmed\n"
+                        f"Status: Ready for pickup/delivery"
+                    )
+                    
+                    admin_sms_result = sms_service.send_sms(admin_phone, admin_message)
+                    
+                    if admin_sms_result and admin_sms_result.get('status') == 'success':
+                        print(f"✓ Delivery request SMS sent to admin ({admin_phone}) for order {order.code}")
+                    else:
+                        error_msg = admin_sms_result.get('message', 'Unknown error') if admin_sms_result else 'No response'
+                        print(f"⚠ Failed to send admin SMS: {error_msg}")
+                else:
+                    print(f"⚠ Admin phone number not configured")
+            
+            except Exception as e:
+                print(f"⚠ SMS service error sending admin notification: {str(e)}")
+                import traceback
+                traceback.print_exc()
+            
+            # Mark delivery as requested
+            from django.utils import timezone
+            order.delivery_requested = True
+            order.delivery_requested_at = timezone.now()
+            order.save(update_fields=['delivery_requested', 'delivery_requested_at'])
+            
+            print(f"✓ Delivery request marked as complete for order {order.code}")
+            
+            return Response({
+                'status': 'success',
+                'message': f'Delivery request sent to rider {rider.get_full_name() or rider.username}',
+                'rider_name': rider.get_full_name() or rider.username,
+                'rider_phone': rider_phone,
+            })
+        
+        except Order.DoesNotExist:
+            return Response(
+                {'detail': 'Order not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            print(f"[ERROR] Exception in RequestDeliveryView: {str(e)}")
+            return Response(
+                {'detail': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )

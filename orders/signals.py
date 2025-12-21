@@ -42,25 +42,26 @@ def order_status_update(sender, instance, created, update_fields=None, **kwargs)
         except Exception as e:
             print(f"Error creating customer notification: {e}")
     
-    # Send SMS notification to admin when a new order is created
-    if created:
-        try:
-            from services.sms_service import send_order_notification_sms
-            admin_phone = settings.ADMIN_PHONE_NUMBER
-            
-            # Only send if API credentials are configured
-            if settings.AFRICAS_TALKING_API_KEY and admin_phone:
-                result = send_order_notification_sms(instance, admin_phone)
-                if result['status'] == 'success':
-                    logger.info(f"Admin SMS notification sent for order {instance.code}")
-                else:
-                    logger.warning(f"Failed to send admin SMS for order {instance.code}: {result.get('message')}")
-        except Exception as e:
-            logger.error(f"Error sending admin SMS notification for order {instance.code}: {str(e)}")
+    # DISABLED: Admin SMS notification is now sent from perform_create() in views.py
+    # This avoids duplicate SMS messages being sent to admin
+    # if created:
+    #     try:
+    #         from services.sms_service import send_order_notification_sms
+    #         admin_phone = settings.ADMIN_PHONE_NUMBER
+    #         
+    #         # Only send if API credentials are configured
+    #         if settings.AFRICAS_TALKING_API_KEY and admin_phone:
+    #             result = send_order_notification_sms(instance, admin_phone)
+    #             if result['status'] == 'success':
+    #                 logger.info(f"Admin SMS notification sent for order {instance.code}")
+    #             else:
+    #                 logger.warning(f"Failed to send admin SMS for order {instance.code}: {result.get('message')}")
+    #     except Exception as e:
+    #         logger.error(f"Error sending admin SMS notification for order {instance.code}: {str(e)}")
     
-    # Only auto-assign riders for manual orders created by staff
-    # Online orders should stay as 'requested' until staff marks them as 'ready'
-    if created and not instance.rider and instance.order_type == 'manual':
+    # Auto-assign riders for all orders (both manual and online) that don't have one yet
+    # This ensures riders get SMS notifications and customers get updates
+    if created and not instance.rider:
         try:
             service_location = instance.service_location
             
@@ -112,7 +113,7 @@ def order_status_update(sender, instance, created, update_fields=None, **kwargs)
                         message=message,
                         notification_type='new_order'
                     )
-                    print(f"✓ Order {instance.code} assigned to rider {assigned_rider.username} in {service_location.name}")
+                    print(f"[ASSIGNED] Order {instance.code} assigned to rider {assigned_rider.username} in {service_location.name}")
                 else:
                     # No riders in this location, try to assign to any available rider
                     all_riders = User.objects.filter(
@@ -134,11 +135,11 @@ def order_status_update(sender, instance, created, update_fields=None, **kwargs)
                             message=message,
                             notification_type='new_order'
                         )
-                        print(f"⚠ Order {instance.code} assigned to rider {assigned_rider.username} (alternate location)")
+                        print(f"[ASSIGNED-ALT] Order {instance.code} assigned to rider {assigned_rider.username} (alternate location)")
                     else:
-                        print(f"✗ No riders available for order {instance.code}")
+                        print(f"[NO-RIDERS] No riders available for order {instance.code}")
             else:
-                print(f"✗ Could not determine location for order {instance.code}")
+                print(f"[NO-LOCATION] Could not determine location for order {instance.code}")
                 
         except Exception as e:
             print(f"Error in auto-assign logic for order {instance.code}: {e}")

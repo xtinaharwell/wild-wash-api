@@ -7,7 +7,8 @@ from .views import (
     RiderOrderListView,
     RequestedOrdersListView,
     StaffCreateOrderView,
-    OrderPaymentStatusView
+    OrderPaymentStatusView,
+    RequestDeliveryView
 )
 
 urlpatterns = [
@@ -17,4 +18,5 @@ urlpatterns = [
     path('requested/', RequestedOrdersListView.as_view(), name='requested-orders-list'),
     path('create/', StaffCreateOrderView.as_view(), name='staff-create-order'),
     path('<str:code>/payment-status/', OrderPaymentStatusView.as_view(), name='order-payment-status'),
+    path('<str:code>/request-delivery/', RequestDeliveryView.as_view(), name='request-delivery'),
 ]
