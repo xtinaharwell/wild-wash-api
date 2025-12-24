@@ -115,6 +115,22 @@ class BNPLViewSet(viewsets.GenericViewSet):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
+            # Extract numeric part from order_id (e.g., 'WW-00225' -> 225)
+            order_id_numeric = None
+            if isinstance(order_id, str):
+                import re
+                numeric_match = re.search(r'\d+', order_id)
+                if numeric_match:
+                    try:
+                        order_id_numeric = int(numeric_match.group())
+                    except (ValueError, TypeError):
+                        pass
+            else:
+                try:
+                    order_id_numeric = int(order_id)
+                except (ValueError, TypeError):
+                    pass
+
             # Get or create BNPL user
             bnpl_user = BNPLUser.objects.get(user=request.user)
 
@@ -149,13 +165,13 @@ class BNPLViewSet(viewsets.GenericViewSet):
             # Create Payment record
             payment = Payment.objects.create(
                 user=request.user,
-                order_id=order_id,
+                order_id=order_id_numeric,
                 amount=amount_decimal,
                 phone_number=bnpl_user.phone_number,
                 provider='bnpl',
                 status='success',
                 raw_payload={
-                    'order_id': order_id,
+                    'order_reference': order_id,
                     'credit_limit': str(bnpl_user.credit_limit),
                     'new_balance': str(bnpl_user.current_balance)
                 }
