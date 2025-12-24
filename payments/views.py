@@ -260,7 +260,7 @@ class MpesaSTKPushView(views.APIView):
         """Initiate M-Pesa STK Push payment."""
         amount = request.data.get('amount')
         phone = request.data.get('phone')
-        order_id = request.data.get('order_id')
+        order_id = request.data.get('order_id')  # Can be null for game wallet top-ups
         
         logger.info(f"STK Push request: amount={amount}, phone={phone}, order_id={order_id}")
         
@@ -274,12 +274,12 @@ class MpesaSTKPushView(views.APIView):
                 phone = request.user.profile.phone_number
                 logger.info(f"Using phone from user.profile: {phone}")
         
-        # Validate input
-        if not all([amount, phone, order_id]):
-            error_msg = f'Missing required fields: amount={bool(amount)}, phone={bool(phone)}, order_id={bool(order_id)}'
+        # Validate input - order_id is optional (null for game wallet top-ups)
+        if not all([amount, phone]):
+            error_msg = f'Missing required fields: amount={bool(amount)}, phone={bool(phone)}'
             logger.error(error_msg)
             return Response(
-                {'detail': 'amount, phone, and order_id are required'},
+                {'detail': 'amount and phone are required'},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
@@ -353,9 +353,13 @@ class MpesaSTKPushView(views.APIView):
             # Get access token from Daraja API
             access_token = self._get_access_token()
             
+            # Determine if this is a game wallet top-up (order_id is null)
+            is_game_wallet_topup = order_id is None
+            account_reference = order_id if order_id else 'GAME_WALLET_TOPUP'
+            
             # Initiate STK Push
             stk_response = self._initiate_stk_push(
-                access_token, amount, phone, order_reference
+                access_token, amount, phone, account_reference
             )
             
             # Create Payment record
@@ -368,16 +372,19 @@ class MpesaSTKPushView(views.APIView):
                 provider='mpesa',
                 provider_reference=checkout_request_id,
                 status='pending',
-                raw_payload={'order_reference': order_reference}
+                raw_payload={
+                    'order_reference': account_reference,
+                    'is_game_wallet': is_game_wallet_topup
+                }
             )
             payment.mark_initiated(provider_reference=checkout_request_id)
             
-            logger.info(f"Payment initiated successfully: {checkout_request_id}")
+            logger.info(f"Payment initiated successfully: {checkout_request_id}, is_game_wallet: {is_game_wallet_topup}")
             return Response({
                 'status': 'success',
                 'message': 'STK push sent to your phone',
                 'checkout_request_id': stk_response.get('CheckoutRequestID'),
-                'order_id': order_reference,
+                'order_id': order_id or 'GAME_WALLET_TOPUP',
                 'amount': amount
             }, status=status.HTTP_200_OK)
             
@@ -496,8 +503,29 @@ class MpesaCallbackView(views.APIView):
                 if result_code == 0:
                     payment.mark_success(payload=data)
                     
+                    # Check if this is a game wallet top-up
+                    is_game_wallet = (payment.raw_payload or {}).get('is_game_wallet', False)
+                    
+                    if is_game_wallet and payment.user:
+                        # Credit the game wallet
+                        try:
+                            from decimal import Decimal
+                            from games.models import GameWallet
+                            
+                            wallet, _ = GameWallet.objects.get_or_create(user=payment.user)
+                            amount_decimal = Decimal(str(payment.amount))
+                            wallet.add_funds(
+                                amount_decimal,
+                                source='mpesa',
+                                payment_id=payment.pk,
+                                notes=f'M-Pesa top-up via STK Push'
+                            )
+                            logger.info(f"Updated game wallet for user {payment.user}: added KES {amount_decimal}, new balance: {wallet.balance}")
+                        except Exception as e:
+                            logger.error(f"Error updating game wallet: {str(e)}", exc_info=True)
+                    
                     # If this is a BNPL payment, update the user's BNPL balance
-                    if payment.provider == 'mpesa' and payment.user and 'BNPL' in (payment.raw_payload or {}).get('order_reference', ''):
+                    elif payment.provider == 'mpesa' and payment.user and 'BNPL' in (payment.raw_payload or {}).get('order_reference', ''):
                         try:
                             from decimal import Decimal
                             bnpl_user = BNPLUser.objects.get(user=payment.user)
@@ -520,6 +548,45 @@ class MpesaCallbackView(views.APIView):
             logger.error(f"Callback processing error: {str(e)}", exc_info=True)
             return Response(
                 {'detail': f'Callback processing error: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class PaymentStatusView(views.APIView):
+    """Check payment status by checkout request ID."""
+    permission_classes = []
+    authentication_classes = []
+    
+    def get(self, request):
+        """Get payment status."""
+        checkout_request_id = request.query_params.get('checkout_request_id')
+        
+        if not checkout_request_id:
+            return Response(
+                {'detail': 'checkout_request_id is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            payment = Payment.objects.get(provider_reference=checkout_request_id)
+            
+            return Response({
+                'status': payment.status,
+                'amount': float(payment.amount),
+                'phone': payment.phone_number,
+                'initiated_at': payment.initiated_at,
+                'completed_at': payment.completed_at,
+                'error_message': payment.notes if payment.status == 'failed' else None
+            }, status=status.HTTP_200_OK)
+        except Payment.DoesNotExist:
+            return Response(
+                {'detail': 'Payment not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            logger.error(f"Error fetching payment status: {str(e)}", exc_info=True)
+            return Response(
+                {'detail': f'Error fetching payment status: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
