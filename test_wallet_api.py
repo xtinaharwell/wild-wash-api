@@ -16,7 +16,7 @@ django.setup()
 from django.test import Client
 from django.contrib.auth import get_user_model
 from rest_framework.authtoken.models import Token
-from games.models import GameWallet
+from casino.models import GameWallet
 from decimal import Decimal
 
 User = get_user_model()

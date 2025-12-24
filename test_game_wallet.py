@@ -13,7 +13,7 @@ sys.path.insert(0, '/path/to/wild-wash-api')
 django.setup()
 
 from django.contrib.auth import get_user_model
-from games.models import GameWallet, GameTransaction
+from casino.models import GameWallet, GameTransaction
 from decimal import Decimal
 
 User = get_user_model()

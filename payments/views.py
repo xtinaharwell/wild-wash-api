@@ -510,7 +510,7 @@ class MpesaCallbackView(views.APIView):
                         # Credit the game wallet
                         try:
                             from decimal import Decimal
-                            from games.models import GameWallet
+                            from casino.models import GameWallet
                             
                             wallet, _ = GameWallet.objects.get_or_create(user=payment.user)
                             amount_decimal = Decimal(str(payment.amount))
