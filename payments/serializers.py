@@ -1,6 +1,7 @@
 # payments/serializers.py
 from rest_framework import serializers
 from .models import Payment, MpesaSTKRequest, BNPLUser
+from .models import TradeIn
 from django.contrib.auth import get_user_model
 
 User = get_user_model()
@@ -88,3 +89,21 @@ class MpesaSTKRequestSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = ["id", "payment", "created_at", "updated_at"]
+
+
+class TradeInSerializer(serializers.ModelSerializer):
+    user = serializers.PrimaryKeyRelatedField(read_only=True)
+
+    class Meta:
+        model = TradeIn
+        fields = [
+            'id',
+            'user',
+            'description',
+            'estimated_price',
+            'contact_phone',
+            'status',
+            'created_at',
+            'updated_at'
+        ]
+        read_only_fields = ['id', 'user', 'status', 'created_at', 'updated_at']

@@ -123,3 +123,31 @@ class MpesaSTKRequest(models.Model):
 
 
 # End of file
+
+
+class TradeIn(models.Model):
+    """Stores user-submitted trade-in items for evaluation."""
+    STATUS_PENDING = 'pending'
+    STATUS_RECEIVED = 'received'
+    STATUS_ACCEPTED = 'accepted'
+    STATUS_REJECTED = 'rejected'
+
+    STATUS_CHOICES = [
+        (STATUS_PENDING, 'Pending'),
+        (STATUS_RECEIVED, 'Received'),
+        (STATUS_ACCEPTED, 'Accepted'),
+        (STATUS_REJECTED, 'Rejected'),
+    ]
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='tradeins')
+    description = models.TextField(help_text='Description of the item being traded in')
+    estimated_price = models.DecimalField(max_digits=10, decimal_places=2)
+    contact_phone = models.CharField(max_length=32, blank=True, null=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING, db_index=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"TradeIn({self.id}) {self.user} - {self.status}"
+

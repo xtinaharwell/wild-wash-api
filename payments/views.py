@@ -6,8 +6,8 @@ from django.conf import settings
 from rest_framework import views, viewsets, permissions, status
 from rest_framework.response import Response
 from rest_framework.decorators import action
-from .models import BNPLUser, Payment
-from .serializers import BNPLUserSerializer
+from .models import BNPLUser, Payment, TradeIn
+from .serializers import BNPLUserSerializer, TradeInSerializer
 
 from rest_framework.authentication import TokenAuthentication
 from rest_framework.permissions import IsAuthenticated
@@ -116,20 +116,35 @@ class BNPLViewSet(viewsets.GenericViewSet):
                 )
 
             # Extract numeric part from order_id (e.g., 'WW-00225' -> 225)
+            # For BNPL or non-numeric references, use a smaller hash
             order_id_numeric = None
             if isinstance(order_id, str):
                 import re
-                numeric_match = re.search(r'\d+', order_id)
-                if numeric_match:
+                # Try to find regular order IDs first (WW-00225 format)
+                numeric_matches = re.findall(r'\d+', order_id)
+                if numeric_matches:
                     try:
-                        order_id_numeric = int(numeric_match.group())
+                        # Use the first number (usually the order number)
+                        first_num = int(numeric_matches[0])
+                        # Ensure it fits in PositiveIntegerField (max 2147483647)
+                        if first_num <= 2147483647:
+                            order_id_numeric = first_num
+                        else:
+                            # If too large, use modulo
+                            order_id_numeric = first_num % 1000000
                     except (ValueError, TypeError):
                         pass
+                
+                # If we couldn't extract a number, use hash of the string
+                if order_id_numeric is None:
+                    order_id_numeric = abs(hash(order_id)) % 1000000
             else:
                 try:
                     order_id_numeric = int(order_id)
+                    if order_id_numeric > 2147483647:
+                        order_id_numeric = order_id_numeric % 1000000
                 except (ValueError, TypeError):
-                    pass
+                    order_id_numeric = None
 
             # Get or create BNPL user
             bnpl_user = BNPLUser.objects.get(user=request.user)
@@ -200,6 +215,28 @@ class BNPLViewSet(viewsets.GenericViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
+    @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
+    def users(self, request):
+        """Get all BNPL users (for admin)."""
+        # Allow only staff/admin to view all users
+        if not request.user.is_staff:
+            return Response(
+                {'detail': 'Permission denied. Admin access required.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        page_size = request.query_params.get('page_size', 100)
+        bnpl_users = BNPLUser.objects.all().order_by('-created_at')
+        
+        try:
+            page_size = int(page_size)
+            bnpl_users = bnpl_users[:page_size]
+        except (ValueError, TypeError):
+            pass
+        
+        serializer = self.get_serializer(bnpl_users, many=True)
+        return Response(serializer.data)
+
 
 class MpesaSTKPushView(views.APIView):
     permission_classes = []  # Allow unauthenticated access
@@ -262,17 +299,31 @@ class MpesaSTKPushView(views.APIView):
         # Try to extract numeric part from order_id (e.g., 'WW-00176' -> 176)
         if isinstance(order_id, str):
             import re
-            numeric_match = re.search(r'\d+', order_id)
-            if numeric_match:
+            # Try to find regular order IDs first (WW-00225 format)
+            numeric_matches = re.findall(r'\d+', order_id)
+            if numeric_matches:
                 try:
-                    order_id_numeric = int(numeric_match.group())
+                    # Use the first number (usually the order number)
+                    first_num = int(numeric_matches[0])
+                    # Ensure it fits in PositiveIntegerField (max 2147483647)
+                    if first_num <= 2147483647:
+                        order_id_numeric = first_num
+                    else:
+                        # If too large, use modulo
+                        order_id_numeric = first_num % 1000000
                 except (ValueError, TypeError):
                     pass
+            
+            # If we couldn't extract a number, use hash of the string
+            if order_id_numeric is None:
+                order_id_numeric = abs(hash(order_id)) % 1000000
         else:
             try:
                 order_id_numeric = int(order_id)
+                if order_id_numeric > 2147483647:
+                    order_id_numeric = order_id_numeric % 1000000
             except (ValueError, TypeError):
-                pass
+                order_id_numeric = None
         
         # Validate phone number format (Kenyan format)
         if not self._validate_phone(phone):
@@ -444,12 +495,74 @@ class MpesaCallbackView(views.APIView):
                 
                 if result_code == 0:
                     payment.mark_success(payload=data)
+                    
+                    # If this is a BNPL payment, update the user's BNPL balance
+                    if payment.provider == 'mpesa' and payment.user and 'BNPL' in (payment.raw_payload or {}).get('order_reference', ''):
+                        try:
+                            from decimal import Decimal
+                            bnpl_user = BNPLUser.objects.get(user=payment.user)
+                            # Reduce the balance by the payment amount
+                            amount_decimal = Decimal(str(payment.amount))
+                            bnpl_user.current_balance -= amount_decimal
+                            if bnpl_user.current_balance < 0:
+                                bnpl_user.current_balance = Decimal('0')
+                            bnpl_user.save()
+                            logger.info(f"Updated BNPL balance for user {payment.user}: {bnpl_user.current_balance}")
+                        except BNPLUser.DoesNotExist:
+                            logger.warning(f"BNPL user not found for payment user {payment.user}")
+                        except Exception as e:
+                            logger.error(f"Error updating BNPL balance: {str(e)}", exc_info=True)
                 else:
                     payment.mark_failed(payload=data, note=f'Result Code: {result_code}')
             
             return Response({'status': 'success'})
         except Exception as e:
+            logger.error(f"Callback processing error: {str(e)}", exc_info=True)
             return Response(
                 {'detail': f'Callback processing error: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+
+class TradeInView(views.APIView):
+    """Accept trade-in submissions from users and retrieve all trade-ins."""
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        """Get all trade-ins for the authenticated user."""
+        try:
+            tradeins = TradeIn.objects.filter(user=request.user).order_by('-created_at')
+            serializer = TradeInSerializer(tradeins, many=True)
+            return Response(serializer.data)
+        except Exception as e:
+            logger.error(f"Error fetching trade-ins: {str(e)}", exc_info=True)
+            return Response({'detail': f'Error fetching trade-ins: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    def post(self, request):
+        try:
+            description = request.data.get('description')
+            estimated_price = request.data.get('estimated_price')
+            contact_phone = request.data.get('contact_phone')
+
+            if not description or estimated_price is None:
+                return Response({'detail': 'description and estimated_price are required'}, status=status.HTTP_400_BAD_REQUEST)
+
+            try:
+                from decimal import Decimal
+                estimated_price_dec = Decimal(str(estimated_price))
+            except Exception:
+                return Response({'detail': 'Invalid estimated_price'}, status=status.HTTP_400_BAD_REQUEST)
+
+            tradein = TradeIn.objects.create(
+                user=request.user,
+                description=description,
+                estimated_price=estimated_price_dec,
+                contact_phone=contact_phone or ''
+            )
+
+            serializer = TradeInSerializer(tradein)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        except Exception as e:
+            logger.error(f"Error creating trade-in: {str(e)}", exc_info=True)
+            return Response({'detail': f'Error creating trade-in: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
