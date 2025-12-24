@@ -89,6 +89,101 @@ class BNPLViewSet(viewsets.GenericViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+    @action(detail=False, methods=['post'])
+    def process(self, request):
+        """Process a BNPL payment for an order."""
+        try:
+            order_id = request.data.get('order_id')
+            amount = request.data.get('amount')
+
+            if not all([order_id, amount]):
+                return Response(
+                    {'detail': 'order_id and amount are required'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            try:
+                amount = float(amount)
+                if amount <= 0:
+                    return Response(
+                        {'detail': 'Amount must be greater than 0'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            except (ValueError, TypeError):
+                return Response(
+                    {'detail': 'Invalid amount format'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Get or create BNPL user
+            bnpl_user = BNPLUser.objects.get(user=request.user)
+
+            if not bnpl_user.is_active:
+                return Response(
+                    {'detail': 'Your BNPL account is inactive'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Calculate available credit (convert to Decimal for proper calculation)
+            from decimal import Decimal
+            amount_decimal = Decimal(str(amount))
+            available_credit = bnpl_user.credit_limit - bnpl_user.current_balance
+
+            # Check if order amount exceeds available credit
+            if amount_decimal > available_credit:
+                return Response(
+                    {
+                        'detail': f'Order amount exceeds available credit',
+                        'required_amount': amount,
+                        'available_credit': float(available_credit),
+                        'credit_limit': float(bnpl_user.credit_limit),
+                        'current_balance': float(bnpl_user.current_balance)
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Update BNPL balance
+            bnpl_user.current_balance += amount_decimal
+            bnpl_user.save()
+
+            # Create Payment record
+            payment = Payment.objects.create(
+                user=request.user,
+                order_id=order_id,
+                amount=amount_decimal,
+                phone_number=bnpl_user.phone_number,
+                provider='bnpl',
+                status='success',
+                raw_payload={
+                    'order_id': order_id,
+                    'credit_limit': str(bnpl_user.credit_limit),
+                    'new_balance': str(bnpl_user.current_balance)
+                }
+            )
+            payment.mark_success()
+
+            serializer = self.get_serializer(bnpl_user)
+            return Response(
+                {
+                    'detail': 'BNPL payment processed successfully',
+                    'bnpl_status': serializer.data,
+                    'payment_id': payment.id
+                },
+                status=status.HTTP_201_CREATED
+            )
+
+        except BNPLUser.DoesNotExist:
+            return Response(
+                {'detail': 'You are not enrolled in BNPL. Please enroll first.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            logger.error(f"Error processing BNPL payment: {str(e)}", exc_info=True)
+            return Response(
+                {'detail': f'Error processing BNPL payment: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
 
 class MpesaSTKPushView(views.APIView):
     permission_classes = []  # Allow unauthenticated access
