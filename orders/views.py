@@ -490,7 +490,10 @@ class OrderUpdateView(APIView):
                             if available_riders.exists():
                                 assigned_rider = available_riders.first()
                                 order.rider = assigned_rider
-                                order.save(update_fields=['rider'])
+                                # Update status from pending_assignment to requested if it was pending
+                                if order.status == 'pending_assignment':
+                                    order.status = 'requested'
+                                order.save(update_fields=['rider', 'status'])
                                 print(f"✓ Order {order.code} assigned to rider {assigned_rider.username}")
                             else:
                                 print(f"⚠ No available riders in {order.service_location.name}")
@@ -511,7 +514,10 @@ class OrderUpdateView(APIView):
                     if available_riders.exists():
                         assigned_rider = available_riders.first()
                         order.rider = assigned_rider
-                        order.save(update_fields=['rider'])
+                        # Update status from pending_assignment to requested if it was pending
+                        if order.status == 'pending_assignment':
+                            order.status = 'requested'
+                        order.save(update_fields=['rider', 'status'])
                         print(f"✓ Order {order.code} assigned to rider {assigned_rider.username}")
                     else:
                         print(f"⚠ No available riders in {order.service_location.name} for order {order.code}")
@@ -758,7 +764,10 @@ class OrderListCreateView(generics.ListCreateAPIView):
                         assigned_rider = riders.first()
                         order.rider = assigned_rider
                         order.service_location = service_location
-                        order.save(update_fields=['rider', 'service_location'])
+                        # Update status from pending_assignment to requested if it was pending
+                        if order.status == 'pending_assignment':
+                            order.status = 'requested'
+                        order.save(update_fields=['rider', 'service_location', 'status'])
                         print(f"[ASSIGNED] Order {order.code} auto-assigned to rider {assigned_rider.username}")
                     else:
                         print(f"⚠ No active riders found in {service_location.name}")
