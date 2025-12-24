@@ -42,7 +42,7 @@ class Migration(migrations.Migration):
                 ('notes', models.TextField(blank=True)),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('updated_at', models.DateTimeField(auto_now=True)),
-                ('wallet', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='transactions', to='games.gamewallet')),
+                ('wallet', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='transactions', to='casino.gamewallet')),
             ],
             options={
                 'ordering': ['-created_at'],
@@ -50,10 +50,10 @@ class Migration(migrations.Migration):
         ),
         migrations.AddIndex(
             model_name='gametransaction',
-            index=models.Index(fields=['wallet', 'created_at'], name='games_gamet_wallet__67fe67_idx'),
+            index=models.Index(fields=['wallet', 'created_at'], name='casino_game_wallet__ce87d3_idx'),
         ),
         migrations.AddIndex(
             model_name='gametransaction',
-            index=models.Index(fields=['transaction_type'], name='games_gamet_transac_f2bdc4_idx'),
+            index=models.Index(fields=['transaction_type'], name='casino_game_transac_424fec_idx'),
         ),
     ]
