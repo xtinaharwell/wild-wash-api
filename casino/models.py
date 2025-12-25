@@ -4,6 +4,81 @@ from django.utils import timezone
 from decimal import Decimal
 
 
+def get_algorithm_choices():
+    """Get algorithm choices dynamically."""
+    try:
+        from .algorithms import ALGORITHM_REGISTRY
+        return [(key, key.replace('_', ' ').title()) for key in ALGORITHM_REGISTRY.keys()]
+    except ImportError:
+        return [('balanced', 'Balanced')]
+
+
+class SpinAlgorithmConfiguration(models.Model):
+    """Configuration for spin algorithms."""
+    
+    name = models.CharField(
+        max_length=100,
+        unique=True,
+        help_text="Name of this algorithm configuration"
+    )
+    algorithm_key = models.CharField(
+        max_length=50,
+        choices=get_algorithm_choices(),
+        help_text="Which algorithm to use"
+    )
+    is_active = models.BooleanField(
+        default=False,
+        help_text="Only one algorithm can be active at a time"
+    )
+    start_time = models.TimeField(
+        null=True,
+        blank=True,
+        help_text="Time to auto-activate this algorithm (optional)"
+    )
+    end_time = models.TimeField(
+        null=True,
+        blank=True,
+        help_text="Time to deactivate this algorithm (optional)"
+    )
+    days_of_week = models.CharField(
+        max_length=20,
+        default='0,1,2,3,4,5,6',
+        help_text="Comma-separated day numbers: 0=Mon, 6=Sun"
+    )
+    description = models.TextField(
+        blank=True,
+        help_text="Description of when/why to use this algorithm"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        verbose_name = "Spin Algorithm Configuration"
+        verbose_name_plural = "Spin Algorithm Configurations"
+        ordering = ['-is_active', 'name']
+    
+    def __str__(self):
+        status = "✓ ACTIVE" if self.is_active else "○ inactive"
+        return f"{self.name} ({self.algorithm_key}) {status}"
+    
+    def save(self, *args, **kwargs):
+        """Ensure only one algorithm is active at a time."""
+        if self.is_active:
+            SpinAlgorithmConfiguration.objects.exclude(pk=self.pk).update(is_active=False)
+        super().save(*args, **kwargs)
+    
+    def get_algorithm_info(self):
+        """Get algorithm instance and metadata."""
+        from .algorithms import get_algorithm
+        algo = get_algorithm(self.algorithm_key)
+        return {
+            'key': self.algorithm_key,
+            'name': algo.name,
+            'description': algo.description,
+            'segments': algo.segments
+        }
+
+
 class GameWallet(models.Model):
     """Tracks game wallet balance for each user."""
     user = models.OneToOneField(

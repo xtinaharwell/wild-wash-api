@@ -1,5 +1,31 @@
 from rest_framework import serializers
-from .models import GameWallet, GameTransaction
+from .models import GameWallet, GameTransaction, SpinAlgorithmConfiguration
+
+
+class SpinAlgorithmConfigurationSerializer(serializers.ModelSerializer):
+    """Serializer for spin algorithm configurations."""
+    algorithm_info = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = SpinAlgorithmConfiguration
+        fields = [
+            'id',
+            'name',
+            'algorithm_key',
+            'is_active',
+            'start_time',
+            'end_time',
+            'days_of_week',
+            'description',
+            'algorithm_info',
+            'created_at',
+            'updated_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+    
+    def get_algorithm_info(self, obj):
+        """Get algorithm segments and metadata."""
+        return obj.get_algorithm_info()
 
 
 class GameTransactionSerializer(serializers.ModelSerializer):
