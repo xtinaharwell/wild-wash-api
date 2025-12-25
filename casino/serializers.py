@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import GameWallet, GameTransaction, SpinAlgorithmConfiguration
+from .models import GameWallet, GameTransaction, SpinAlgorithmConfiguration, GameSpinResult
 
 
 class SpinAlgorithmConfigurationSerializer(serializers.ModelSerializer):
@@ -78,3 +78,29 @@ class GameWalletBalanceSerializer(serializers.ModelSerializer):
     class Meta:
         model = GameWallet
         fields = ['balance', 'total_deposits', 'total_winnings', 'total_losses', 'updated_at']
+
+
+class GameSpinResultSerializer(serializers.ModelSerializer):
+    """Serializer for individual spin results."""
+    game_type_display = serializers.CharField(source='get_game_type_display', read_only=True)
+    
+    class Meta:
+        model = GameSpinResult
+        fields = [
+            'id',
+            'game_type',
+            'game_type_display',
+            'spin_cost',
+            'result_label',
+            'multiplier',
+            'winnings',
+            'net_profit',
+            'is_win',
+            'created_at',
+        ]
+        read_only_fields = [
+            'id',
+            'net_profit',
+            'is_win',
+            'created_at',
+        ]

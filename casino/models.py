@@ -201,3 +201,48 @@ class GameTransaction(models.Model):
 
     def __str__(self):
         return f"{self.get_transaction_type_display()} - {self.wallet.user.username} - KES {self.amount}"
+
+
+class GameSpinResult(models.Model):
+    """Records individual spin results for the Spin the Wheel game."""
+    GAME_TYPES = [
+        ('spin_the_wheel', 'Spin The Wheel'),
+        ('crash_game', 'Crash Game'),
+        ('pump_game', 'Pump The Coin'),
+    ]
+    
+    wallet = models.ForeignKey(GameWallet, on_delete=models.CASCADE, related_name='spin_results')
+    game_type = models.CharField(
+        max_length=20,
+        choices=GAME_TYPES,
+        default='spin_the_wheel'
+    )
+    
+    # Spin details
+    spin_cost = models.DecimalField(max_digits=10, decimal_places=2)
+    result_label = models.CharField(max_length=50, help_text="e.g., '2x', '0.5x', 'LOSE'")
+    multiplier = models.DecimalField(max_digits=5, decimal_places=2)
+    winnings = models.DecimalField(max_digits=12, decimal_places=2)
+    net_profit = models.DecimalField(max_digits=12, decimal_places=2, default='0.00')
+    
+    # Status and timing
+    is_win = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['wallet', 'created_at']),
+            models.Index(fields=['wallet', 'game_type', 'created_at']),
+            models.Index(fields=['is_win']),
+        ]
+    
+    def __str__(self):
+        result_str = '✓ WIN' if self.is_win else '✗ LOSS'
+        return f"{self.wallet.user.username} - {self.result_label} {result_str} - KES {self.winnings}"
+    
+    def save(self, *args, **kwargs):
+        """Calculate net profit on save."""
+        self.net_profit = self.winnings - self.spin_cost
+        self.is_win = self.multiplier > 1
+        super().save(*args, **kwargs)

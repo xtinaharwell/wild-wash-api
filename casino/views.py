@@ -4,8 +4,8 @@ from rest_framework.response import Response
 from rest_framework.authentication import TokenAuthentication
 from rest_framework.decorators import action
 from django.shortcuts import get_object_or_404
-from .models import GameWallet, GameTransaction, SpinAlgorithmConfiguration
-from .serializers import GameWalletSerializer, GameWalletBalanceSerializer, GameTransactionSerializer, SpinAlgorithmConfigurationSerializer
+from .models import GameWallet, GameTransaction, SpinAlgorithmConfiguration, GameSpinResult
+from .serializers import GameWalletSerializer, GameWalletBalanceSerializer, GameTransactionSerializer, SpinAlgorithmConfigurationSerializer, GameSpinResultSerializer
 from .algorithms import get_algorithm, get_all_algorithms
 
 logger = logging.getLogger(__name__)
@@ -63,6 +63,55 @@ class GameWalletViewSet(viewsets.ViewSet):
             logger.error(f"Error fetching transactions: {str(e)}", exc_info=True)
             return Response(
                 {'detail': f'Error fetching transactions: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=False, methods=['get'])
+    def spin_history(self, request):
+        """Get spin history for the current user."""
+        try:
+            wallet = self.get_game_wallet(request.user)
+            
+            # Get query params for filtering
+            limit = int(request.query_params.get('limit', 100))
+            game_type = request.query_params.get('game_type', None)
+            wins_only = request.query_params.get('wins_only', 'false').lower() == 'true'
+            
+            # Build query
+            spin_results = wallet.spin_results.all()
+            if game_type:
+                spin_results = spin_results.filter(game_type=game_type)
+            if wins_only:
+                spin_results = spin_results.filter(is_win=True)
+            
+            spin_results = spin_results[:limit]
+            
+            # Calculate stats
+            total_spins = wallet.spin_results.count()
+            total_wins = wallet.spin_results.filter(is_win=True).count()
+            win_rate = (total_wins / total_spins * 100) if total_spins > 0 else 0
+            total_wagered = sum(float(s.spin_cost) for s in wallet.spin_results.all())
+            total_won = sum(float(s.winnings) for s in wallet.spin_results.filter(is_win=True).all())
+            net_profit = sum(float(s.net_profit) for s in wallet.spin_results.all())
+            
+            serializer = GameSpinResultSerializer(spin_results, many=True)
+            return Response({
+                'count': len(serializer.data),
+                'results': serializer.data,
+                'stats': {
+                    'total_spins': total_spins,
+                    'total_wins': total_wins,
+                    'total_losses': total_spins - total_wins,
+                    'win_rate': round(win_rate, 2),
+                    'total_wagered': round(total_wagered, 2),
+                    'total_won': round(total_won, 2),
+                    'net_profit': round(net_profit, 2),
+                }
+            }, status=status.HTTP_200_OK)
+        except Exception as e:
+            logger.error(f"Error fetching spin history: {str(e)}", exc_info=True)
+            return Response(
+                {'detail': f'Error fetching spin history: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
@@ -306,7 +355,8 @@ class GameWalletViewSet(viewsets.ViewSet):
             "spin_cost": 20,
             "winnings": 100,
             "multiplier": 5,
-            "result_label": "5x"
+            "result_label": "5x",
+            "game_type": "spin_the_wheel"  (optional)
         }
         
         Returns updated balance and transaction info.
@@ -319,8 +369,9 @@ class GameWalletViewSet(viewsets.ViewSet):
             # Get spin data from request
             spin_cost = Decimal(str(request.data.get('spin_cost', 0)))
             winnings = Decimal(str(request.data.get('winnings', 0)))
-            multiplier = request.data.get('multiplier', 0)
+            multiplier = Decimal(str(request.data.get('multiplier', 0)))
             result_label = request.data.get('result_label', 'Unknown')
+            game_type = request.data.get('game_type', 'spin_the_wheel')
             
             if spin_cost <= 0:
                 return Response(
@@ -345,7 +396,7 @@ class GameWalletViewSet(viewsets.ViewSet):
             wallet.deduct_funds(
                 spin_cost,
                 reason='spin',
-                notes=f'Spin cost for lucky spin game'
+                notes=f'Spin cost for {game_type}'
             )
             
             # Add winnings (if any)
@@ -355,6 +406,19 @@ class GameWalletViewSet(viewsets.ViewSet):
                     game_name='Lucky Spin Wheel',
                     notes=f'Won {result_label} (multiplier {multiplier}x)'
                 )
+            
+            # Create spin result record
+            spin_result = GameSpinResult.objects.create(
+                wallet=wallet,
+                game_type=game_type,
+                spin_cost=spin_cost,
+                result_label=result_label,
+                multiplier=multiplier,
+                winnings=winnings,
+                is_win=multiplier > 0
+            )
+            
+            logger.info(f"User {request.user.username} spun: {result_label} ({multiplier}x) - Won: {winnings} KES")
             
             # Return updated balance
             return Response({
