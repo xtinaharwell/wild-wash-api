@@ -72,13 +72,18 @@ class LoginView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
-        # simple token login example - assumes username/password posted
-        from django.contrib.auth import authenticate
-        username = request.data.get('username')
+        # token login with phone number and password
+        phone = request.data.get('phoneNumber')
         password = request.data.get('password')
-        user = authenticate(request, username=username, password=password)
-        if not user:
+        
+        try:
+            user = User.objects.get(phone=phone)
+        except User.DoesNotExist:
             return Response({'detail': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
+        
+        if not user.check_password(password):
+            return Response({'detail': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
+        
         token, _ = Token.objects.get_or_create(user=user)
         return Response({'token': token.key, 'user': UserSerializer(user).data})
 
@@ -133,11 +138,18 @@ class AdminLoginView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
-        username = request.data.get('username')
+        phone = request.data.get('phoneNumber')
         password = request.data.get('password')
-        user = authenticate(request, username=username, password=password)
-
-        if not user or not user.is_superuser:
+        
+        try:
+            user = User.objects.get(phone=phone)
+        except User.DoesNotExist:
+            return Response(
+                {'detail': 'Invalid credentials or not an admin'}, 
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        
+        if not user.is_superuser or not user.check_password(password):
             return Response(
                 {'detail': 'Invalid credentials or not an admin'}, 
                 status=status.HTTP_401_UNAUTHORIZED
@@ -158,10 +170,18 @@ class StaffLoginView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
-        username = request.data.get('username')
+        phone = request.data.get('phoneNumber')
         password = request.data.get('password')
-        user = authenticate(request, username=username, password=password)
-        if not user or not user.is_staff:
+        
+        try:
+            user = User.objects.get(phone=phone)
+        except User.DoesNotExist:
+            return Response(
+                {'detail': 'Invalid credentials or not a staff member'}, 
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        
+        if not user.is_staff or not user.check_password(password):
             return Response(
                 {'detail': 'Invalid credentials or not a staff member'}, 
                 status=status.HTTP_401_UNAUTHORIZED
