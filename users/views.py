@@ -66,8 +66,6 @@ class UserViewSet(viewsets.ModelViewSet):
         return UserSerializer
 
 
-@method_decorator(csrf_exempt, name='dispatch')
-@method_decorator(csrf_exempt, name='dispatch')
 class LoginView(APIView):
     permission_classes = [permissions.AllowAny]
 
@@ -130,7 +128,6 @@ class LocationViewSet(viewsets.ModelViewSet):
         return super().get_permissions()
 
 
-@method_decorator(csrf_exempt, name='dispatch')
 class AdminLoginView(APIView):
     """
     Special login view for admin users that verifies superuser status
@@ -162,7 +159,6 @@ class AdminLoginView(APIView):
         })
 
 
-@method_decorator(csrf_exempt, name='dispatch')
 class StaffLoginView(APIView):
     """
     Special login view for staff members that checks their location assignment
