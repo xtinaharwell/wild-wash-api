@@ -9,16 +9,5 @@
         "runtime": "python3.11"
       }
     }
-  ],
-  "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "api/wsgi.py"
-    }
-  ],
-  "functions": {
-    "api/wsgi.py": {
-      "maxDuration": 30
-    }
-  }
+  ]
 }
