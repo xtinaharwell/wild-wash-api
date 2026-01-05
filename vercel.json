@@ -1,4 +1,5 @@
 {
+  "buildCommand": "pip install -r requirements.txt && python manage.py collectstatic --noinput",
   "builds": [
     {
       "src": "api/wsgi.py",
@@ -11,16 +12,13 @@
   ],
   "routes": [
     {
-      "src": "/static/(.*)",
-      "dest": "/staticfiles/$1",
-      "headers": {
-        "Cache-Control": "public, max-age=3600, immutable"
-      }
-    },
-    {
       "src": "/(.*)",
       "dest": "api/wsgi.py"
     }
   ],
-  "buildCommand": "python manage.py collectstatic --noinput"
+  "functions": {
+    "api/wsgi.py": {
+      "maxDuration": 30
+    }
+  }
 }

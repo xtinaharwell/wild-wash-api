@@ -1,0 +1,14 @@
+# Don't ignore these important directories
+!staticfiles/
+!.env.local
+
+# Standard ignores
+.git
+.gitignore
+node_modules
+*.pyc
+__pycache__
+*.egg-info
+.venv
+venv
+.DS_Store
