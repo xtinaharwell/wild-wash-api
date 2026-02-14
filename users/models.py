@@ -9,6 +9,8 @@ def format_phone_number(phone_number):
     - 254718693484 -> +254718693484
     - +254718693484 -> +254718693484
     - 0718693484 -> +254718693484
+    - 0112345678 -> +254112345678 (landline format)
+    - 112345678 -> +254112345678
     """
     if not phone_number:
         return None
@@ -24,6 +26,7 @@ def format_phone_number(phone_number):
         phone = phone[1:]
     
     # If starts with 0, replace with 254 (Kenya country code)
+    # This handles both mobile (07x) and landline (011, 020, etc.) formats
     if phone.startswith('0'):
         phone = '254' + phone[1:]
     

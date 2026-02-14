@@ -21,6 +21,22 @@ class StaffCreateSerializer(serializers.ModelSerializer):
             'first_name', 'last_name', 
             'service_location', 'location', 'is_location_admin'
         ]
+    
+    def validate_username(self, value):
+        """Check if username already exists"""
+        if User.objects.filter(username__iexact=value).exists():
+            raise serializers.ValidationError(
+                f"A user with the username '{value}' already exists. Please choose a different username."
+            )
+        return value
+    
+    def validate_email(self, value):
+        """Check if email already exists"""
+        if value and User.objects.filter(email__iexact=value).exists():
+            raise serializers.ValidationError(
+                f"A user with the email '{value}' already exists. Please use a different email address."
+            )
+        return value
         
     def create(self, validated_data):
         password = validated_data.pop('password')
@@ -92,6 +108,14 @@ class UserCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ["id", "username", "phone", "password", "first_name", "last_name", "location", "pickup_address"]
+
+    def validate_username(self, value):
+        """Check if username already exists"""
+        if User.objects.filter(username__iexact=value).exists():
+            raise serializers.ValidationError(
+                f"A user with the username '{value}' already exists. Please choose a different username."
+            )
+        return value
 
     def create(self, validated_data):
         password = validated_data.pop("password")

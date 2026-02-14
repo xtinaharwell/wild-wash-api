@@ -175,6 +175,18 @@ class Order(models.Model):
         """Calculate total price from all services"""
         return sum(service.price for service in self.services.all())
 
+    def get_actual_status_display(self):
+        """
+        Get the actual status display.
+        If status is 'pending_assignment' but a rider is assigned, return a more accurate status.
+        """
+        if self.status == 'pending_assignment':
+            if self.rider:
+                # If rider is assigned but status is still pending_assignment, show as 'Rider Assigned'
+                return 'Rider Assigned'
+            return self.get_status_display()
+        return self.get_status_display()
+
     def __str__(self):
         return f"Order #{self.id} - {self.user.username if self.user else 'Guest'}"
 

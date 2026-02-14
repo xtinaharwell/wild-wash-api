@@ -83,14 +83,16 @@ class StaffCreateOrderView(APIView):
                             # Format phone number to international format
                             formatted_phone = format_phone_number(user_phone)
                             order_url = f"https://www.wildwash.co.ke/orders/{order.code}"
+                            est_time = order.estimated_delivery.strftime('%d %b, %H:%M') if order.estimated_delivery else 'TBD'
                             customer_message = (
                                 f"WILDWASH SERVICES\n"
                                 f"==================\n"
-                                f"🎉 Order Created!\n"
+                                f"Order Created!\n"
                                 f"Order #: {order.code}\n"
                                 f"Services: {services}\n"
                                 f"Pickup: {order.pickup_address}\n"
                                 f"Price: KES {order.price or 'TBD'}\n"
+                                f"Est. Delivery: {est_time}\n"
                                 f"Created by: {request.user.username}\n"
                                 f"View: {order_url}\n"
                                 f"We'll update you when it's ready!"
@@ -125,7 +127,7 @@ class StaffCreateOrderView(APIView):
                                 f"Price: KES {order.price or 'TBD'}\n"
                                 f"Urgency: {order.urgency}/5\n"
                                 f"Created By: {request.user.username}\n"
-                                f"Status: {order.get_status_display()}"
+                                f"Status: {order.get_actual_status_display()}"
                             )
                             
                             result = sms_service.send_sms(admin_phone, admin_message)
@@ -849,14 +851,16 @@ class OrderListCreateView(generics.ListCreateAPIView):
                     # Format phone number to international format
                     formatted_phone = format_phone_number(user_phone)
                     order_url = f"https://www.wildwash.co.ke/orders/{order.code}"
+                    est_time = order.estimated_delivery.strftime('%d %b, %H:%M') if order.estimated_delivery else 'TBD'
                     customer_message = (
                         f"WILDWASH SERVICES\n"
                         f"==================\n"
-                        f"🎉 Order Confirmed!\n"
+                        f"Order Confirmed!\n"
                         f"Order #: {order.code}\n"
                         f"Services: {services}\n"
                         f"Pickup: {order.pickup_address}\n"
                         f"Price: KES {order.price or 'TBD'}\n"
+                        f"Est. Delivery: {est_time}\n"
                         f"View: {order_url}\n"
                         f"We'll notify you when your order is ready!"
                     )
@@ -879,10 +883,11 @@ class OrderListCreateView(generics.ListCreateAPIView):
                 try:
                     sms_service = AfricasTalkingSMSService()
                     admin_url = f"https://www.wildwash.co.ke/admin/orders/{order.code}"
+                    est_time = order.estimated_delivery.strftime('%d %b, %H:%M') if order.estimated_delivery else 'TBD'
                     admin_message = (
                         f"WILDWASH SERVICES\n"
                         f"==================\n"
-                        f"📦 NEW ORDER ALERT!\n"
+                        f"NEW ORDER ALERT!\n"
                         f"Order #: {order.code}\n"
                         f"Customer: {user_name}\n"
                         f"Phone: {user_phone or 'N/A'}\n"
@@ -892,7 +897,8 @@ class OrderListCreateView(generics.ListCreateAPIView):
                         f"Items: {order.items}\n"
                         f"Price: KES {order.price or 'TBD'}\n"
                         f"Urgency: {order.urgency}/5\n"
-                        f"Status: {order.get_status_display()}\n"
+                        f"Est. Delivery: {est_time}\n"
+                        f"Status: {order.get_actual_status_display()}\n"
                         f"Manage: {admin_url}"
                     )
                     
@@ -924,16 +930,18 @@ class OrderListCreateView(generics.ListCreateAPIView):
                         print(f"[DEBUG] Attempting to send SMS to rider {order.rider.username} at {rider_phone}")
                         sms_service = AfricasTalkingSMSService()
                         rider_url = f"https://www.wildwash.co.ke/rider/orders/{order.code}"
+                        est_time = order.estimated_delivery.strftime('%d %b, %H:%M') if order.estimated_delivery else 'TBD'
                         rider_message = (
                             f"WILDWASH SERVICES\n"
                             f"==================\n"
-                            f"🚴 New Order Assigned!\n"
+                            f"New Order Assigned!\n"
                             f"Order #: {order.code}\n"
                             f"Customer: {user_name}\n"
                             f"Pickup: {order.pickup_address}\n"
                             f"Dropoff: {order.dropoff_address}\n"
                             f"Services: {services}\n"
                             f"Items: {order.items}\n"
+                            f"Est. Delivery: {est_time}\n"
                             f"Urgency: {order.urgency}/5\n"
                             f"Accept: {rider_url}"
                         )
