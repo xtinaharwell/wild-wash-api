@@ -1,5 +1,40 @@
 from django.contrib.auth.models import AbstractUser
 from django.db import models
+from django.core.exceptions import ValidationError
+
+def format_phone_number(phone_number):
+    """
+    Format phone number to international format (+254...)
+    Handles various input formats:
+    - 254718693484 -> +254718693484
+    - +254718693484 -> +254718693484
+    - 0718693484 -> +254718693484
+    """
+    if not phone_number:
+        return None
+    
+    # Convert to string and strip whitespace
+    phone = str(phone_number).strip()
+    
+    # Remove any non-digit characters except +
+    phone = ''.join(c for c in phone if c.isdigit() or c == '+')
+    
+    # Remove leading + if present (we'll add it back)
+    if phone.startswith('+'):
+        phone = phone[1:]
+    
+    # If starts with 0, replace with 254 (Kenya country code)
+    if phone.startswith('0'):
+        phone = '254' + phone[1:]
+    
+    # If doesn't start with 254, add it
+    if not phone.startswith('254'):
+        phone = '254' + phone
+    
+    # Add + prefix
+    phone = '+' + phone
+    
+    return phone
 
 class Location(models.Model):
     name = models.CharField(max_length=100, unique=True)
@@ -53,6 +88,12 @@ class User(AbstractUser):
         default=False,
         help_text="Designates whether this user can manage other users in their location"
     )
+
+    def save(self, *args, **kwargs):
+        """Auto-format phone number to international format before saving"""
+        if self.phone:
+            self.phone = format_phone_number(self.phone)
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.username} ({self.role})"
