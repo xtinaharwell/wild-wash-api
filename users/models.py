@@ -67,7 +67,7 @@ class User(AbstractUser):
         ("folder", "Folder"),
     )
 
-    phone = models.CharField(max_length=20)  # Required phone number
+    phone = models.CharField(max_length=20, unique=True)  # Required phone number - unique to prevent login issues
     service_location = models.ForeignKey(
         Location, 
         on_delete=models.SET_NULL,

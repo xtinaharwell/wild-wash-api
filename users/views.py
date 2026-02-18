@@ -93,12 +93,19 @@ class LoginView(APIView):
                 # Format the phone number to match stored format
                 formatted_phone = format_phone_number(phone)
                 # Try exact match first
-                user = User.objects.get(phone=formatted_phone)
+                user = User.objects.get(phone=formatted_phone, is_active=True)
             except User.DoesNotExist:
                 # Try without formatting in case it's already formatted
                 try:
-                    user = User.objects.get(phone=phone)
+                    user = User.objects.get(phone=phone, is_active=True)
                 except User.DoesNotExist:
+                    pass
+            except User.MultipleObjectsReturned:
+                # Multiple users with same phone - this is a database integrity issue
+                # Try to get the most recently created active user
+                try:
+                    user = User.objects.filter(phone=formatted_phone, is_active=True).order_by('-date_joined').first()
+                except Exception:
                     pass
         
         # Try email authentication if phone didn't work
