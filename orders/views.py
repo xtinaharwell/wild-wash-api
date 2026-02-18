@@ -72,11 +72,13 @@ class StaffCreateOrderView(APIView):
                     
                     # Format services list
                     services = ', '.join([s.name for s in order.services.all()]) if order.services.exists() else 'N/A'
-                    user_name = order.user.get_full_name() or order.user.username if order.user else 'Walk-in Customer'
-                    user_phone = order.user.phone if order.user and order.user.phone else None  # type: ignore
+                    user_name = order.user.get_full_name() or order.user.username if order.user else order.customer_name or 'Customer'
+                    # Get customer phone from user.phone OR customer_phone field (for walk-in orders)
+                    user_phone = (order.user.phone if order.user and order.user.phone else None) or \
+                                 (order.customer_phone if order.customer_phone else None) or None
                     
                     # 1. Send SMS to CUSTOMER (user who dropped off items)
-                    if user_phone:
+                    if user_phone and str(user_phone).strip():
                         try:
                             from services.sms_service import format_phone_number
                             sms_service = AfricasTalkingSMSService()
@@ -840,11 +842,13 @@ class OrderListCreateView(generics.ListCreateAPIView):
             
             # Format services list
             services = ', '.join([s.name for s in order.services.all()]) if order.services.exists() else 'N/A'
-            user_name = order.user.get_full_name() or order.user.username if order.user else 'Walk-in Customer'
-            user_phone = order.user.phone if order.user and order.user.phone else None  # type: ignore
+            user_name = order.user.get_full_name() or order.user.username if order.user else order.customer_name or 'Customer'
+            # Get customer phone from user.phone OR customer_phone field (for walk-in orders)
+            user_phone = (order.user.phone if order.user and order.user.phone else None) or \
+                         (order.customer_phone if order.customer_phone else None) or None
             
             # 1. Send SMS to CUSTOMER
-            if user_phone:
+            if user_phone and str(user_phone).strip():
                 try:
                     from services.sms_service import format_phone_number
                     sms_service = AfricasTalkingSMSService()
@@ -922,10 +926,12 @@ class OrderListCreateView(generics.ListCreateAPIView):
                 print(f"[DEBUG] Rider phone attribute: {hasattr(order.rider, 'phone')}")
                 print(f"[DEBUG] Rider phone value: {order.rider.phone if hasattr(order.rider, 'phone') else 'NO PHONE ATTR'}")
                 
-                rider_phone = order.rider.phone if hasattr(order.rider, 'phone') else None  # type: ignore
+                # Properly convert empty string to None
+                rider_phone = order.rider.phone if hasattr(order.rider, 'phone') and order.rider.phone else None  # type: ignore
+                rider_phone = None if rider_phone and not str(rider_phone).strip() else rider_phone  # type: ignore
                 print(f"[DEBUG] Final rider_phone: {rider_phone}")
                 
-                if rider_phone:
+                if rider_phone and str(rider_phone).strip():
                     try:
                         print(f"[DEBUG] Attempting to send SMS to rider {order.rider.username} at {rider_phone}")
                         sms_service = AfricasTalkingSMSService()
