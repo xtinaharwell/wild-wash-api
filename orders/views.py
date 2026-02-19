@@ -280,8 +280,12 @@ class OrderUpdateView(APIView):
             order = Order.objects.get(id=order_id)
             
             # Check if the staff member has permission for this location
+            # Allow: superusers, or staff with matching service_location, or any staff with washer/folder role
             if request.user.is_staff and not request.user.is_superuser:
-                if not request.user.service_location or order.service_location != request.user.service_location:
+                has_staff_type = hasattr(request.user, 'staff_type') and request.user.staff_type in ['washer', 'folder']
+                has_location_match = request.user.service_location and order.service_location == request.user.service_location
+                
+                if not has_staff_type and not has_location_match:
                     return Response({'error': 'You do not have permission to update this order'}, 
                                  status=status.HTTP_403_FORBIDDEN)
 
