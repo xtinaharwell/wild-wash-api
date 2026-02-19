@@ -308,6 +308,7 @@ class AfricasTalkingSMSService:
             services = ', '.join([s.name for s in order.services.all()]) if order.services.exists() else 'N/A'
             weight_info = f"\nWeight: {order.weight_kg}kg" if order.weight_kg else ""
             
+            rider_url = f"https://www.wildwash.co.ke/rider/orders/{order.code}"
             message = (
                 f"Order Ready for Delivery{rider_info}!\n"
                 f"Order: {order.code}\n"
@@ -317,6 +318,7 @@ class AfricasTalkingSMSService:
                 f"{weight_info}\n"
                 f"Items: {order.quantity or order.items}\n"
                 f"Price: KES {order.actual_price or order.price or 'TBD'}\n"
+                f"View: {rider_url}\n"
                 f"Please pick up the package. Thank you!"
             )
             
@@ -350,6 +352,7 @@ class AfricasTalkingSMSService:
             os.environ['CURL_CA_BUNDLE'] = ''
             
             services = ', '.join([s.name for s in order.services.all()]) if order.services.exists() else 'N/A'
+            order_url = f"https://www.wildwash.co.ke/orders/{order.code}"
             
             message = (
                 f"Order Confirmed!\n"
@@ -359,6 +362,7 @@ class AfricasTalkingSMSService:
                 f"Dropoff: {order.dropoff_address}\n"
                 f"Price: KES {order.price or 'TBD'}\n"
                 f"Status: {order.get_status_display()}\n"
+                f"View: {order_url}\n"
                 f"Thank you for choosing WildWash!"
             )
             
@@ -391,11 +395,12 @@ class AfricasTalkingSMSService:
             os.environ['REQUESTS_CA_BUNDLE'] = ''
             os.environ['CURL_CA_BUNDLE'] = ''
             
+            order_url = f"https://www.wildwash.co.ke/orders/{order.code}"
             message = (
                 f"Your Order #{order.code} Delivered!\n"
                 f"Thank you for using WildWash.\n"
-                f"Rate us: wildwash.co.ke\n"
-                f"Need anything else? Contact us!"
+                f"View order: {order_url}\n"
+                f"Rate us: wildwash.co.ke"
             )
             
             result = self.send_sms(customer_phone, message)
@@ -438,6 +443,7 @@ class AfricasTalkingSMSService:
             # Format delivery/pickup info
             delivery_text = "ready for delivery" if dropoff_address.lower() != 'to be assigned' else "ready for pickup"
             
+            order_url = f"https://www.wildwash.co.ke/orders/{order.code}"
             message = (
                 f"Your Order is Ready!\n"
                 f"Order #: {order.code}\n"
@@ -448,6 +454,7 @@ class AfricasTalkingSMSService:
                 f"{weight_info}\n"
                 f"Amount: KES {price}\n"
                 f"Your order is {delivery_text}!\n"
+                f"View: {order_url}\n"
                 f"Thank you for choosing WildWash!"
             )
             
@@ -487,7 +494,6 @@ def send_order_notification_sms(order, admin_phone_number):
             f"Phone: {order.user.phone}\n"
             f"Pickup: {order.pickup_address}\n"
             f"Dropoff: {order.dropoff_address}\n"
-            f"Urgency: {order.urgency}/5\n"
             f"Status: {order.get_status_display()}"
         )
         

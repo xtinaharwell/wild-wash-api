@@ -116,6 +116,7 @@ class StaffCreateOrderView(APIView):
                     if admin_phone:
                         try:
                             sms_service = AfricasTalkingSMSService()
+                            order_url = f"https://www.wildwash.co.ke/orders/{order.code}"
                             admin_message = (
                                 f"MANUAL ORDER CREATED!\n"
                                 f"Order #: {order.code}\n"
@@ -126,9 +127,9 @@ class StaffCreateOrderView(APIView):
                                 f"Services: {services}\n"
                                 f"Items: {order.items}\n"
                                 f"Price: KES {order.price or 'TBD'}\n"
-                                f"Urgency: {order.urgency}/5\n"
                                 f"Created By: {request.user.username}\n"
-                                f"Status: {order.get_actual_status_display()}"
+                                f"Status: {order.get_actual_status_display()}\n"
+                                f"Manage: {order_url}"
                             )
                             
                             result = sms_service.send_sms(admin_phone, admin_message)
@@ -888,7 +889,7 @@ class OrderListCreateView(generics.ListCreateAPIView):
             if admin_phone:
                 try:
                     sms_service = AfricasTalkingSMSService()
-                    admin_url = f"https://www.wildwash.co.ke/admin/orders/{order.code}"
+                    admin_url = f"https://www.wildwash.co.ke/orders/{order.code}"
                     est_time = order.estimated_delivery.strftime('%d %b, %H:%M') if order.estimated_delivery else 'TBD'
                     admin_message = (
                         f"WILDWASH SERVICES\n"
@@ -901,7 +902,6 @@ class OrderListCreateView(generics.ListCreateAPIView):
                         f"Services: {services}\n"
                         f"Items: {order.items}\n"
                         f"Price: KES {order.price or 'TBD'}\n"
-                        f"Urgency: {order.urgency}/5\n"
                         f"Est. Delivery: {est_time}\n"
                         f"Status: {order.get_actual_status_display()}\n"
                         f"Manage: {admin_url}"
@@ -938,17 +938,18 @@ class OrderListCreateView(generics.ListCreateAPIView):
                         sms_service = AfricasTalkingSMSService()
                         rider_url = f"https://www.wildwash.co.ke/rider/orders/{order.code}"
                         est_time = order.estimated_delivery.strftime('%d %b, %H:%M') if order.estimated_delivery else 'TBD'
+                        rider_name = order.rider.get_full_name() or order.rider.username if order.rider else 'Rider'
                         rider_message = (
                             f"WILDWASH SERVICES\n"
                             f"New Order Assigned!\n"
                             f"Order #: {order.code}\n"
+                            f"Rider: {rider_name}\n"
                             f"Customer: {user_name}\n"
                             f"Pickup: {order.pickup_address}\n"
                             f"Dropoff: {order.dropoff_address}\n"
                             f"Services: {services}\n"
                             f"Items: {order.items}\n"
                             f"Est. Delivery: {est_time}\n"
-                            f"Urgency: {order.urgency}/5\n"
                             f"Accept: {rider_url}"
                         )
                         
@@ -1095,6 +1096,7 @@ class RequestDeliveryView(APIView):
                     customer_name = order.user.get_full_name() or order.user.username if order.user else 'Customer'
                     customer_phone = order.user.phone if order.user and order.user.phone else 'N/A'  # type: ignore
                     
+                    rider_url = f"https://www.wildwash.co.ke/rider/orders/{order.code}"
                     rider_message = (
                         f"🚴 Delivery Request!\n"
                         f"Order #: {order.code}\n"
@@ -1106,6 +1108,7 @@ class RequestDeliveryView(APIView):
                         f"Items: {order.quantity or order.items}\n"
                         f"Amount: KES {order.actual_price or order.price}\n"
                         f"Payment: ✓ Confirmed\n"
+                        f"View: {rider_url}\n"
                         f"Please proceed with delivery. Thank you!"
                     )
                     
