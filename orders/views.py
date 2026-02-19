@@ -56,7 +56,7 @@ class StaffCreateOrderView(APIView):
                         Notification.objects.create(
                             user=admin,
                             order=order,
-                            message=f"📦 Manual order {order.code} created by {request.user.username}",
+                            message=f"Manual order {order.code} created by {request.user.username}",
                             notification_type='new_order'
                         )
                 
@@ -118,7 +118,7 @@ class StaffCreateOrderView(APIView):
                         try:
                             sms_service = AfricasTalkingSMSService()
                             admin_message = (
-                                f"📦 MANUAL ORDER CREATED!\n"
+                                f"MANUAL ORDER CREATED!\n"
                                 f"Order #: {order.code}\n"
                                 f"Customer: {user_name}\n"
                                 f"Phone: {user_phone or 'N/A'}\n"
@@ -439,7 +439,7 @@ class OrderUpdateView(APIView):
                             customer_name = order.user.get_full_name() or order.user.username if order.user else 'Customer'
                             
                             sms_message = (
-                                f"📦 Order Ready for Folding!\n"
+                                f"Order Ready for Folding!\n"
                                 f"Order #: {order.code}\n"
                                 f"Customer: {customer_name}\n"
                                 f"Service: {services}\n"

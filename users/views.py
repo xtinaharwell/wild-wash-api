@@ -353,3 +353,181 @@ class StaffViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         user = serializer.save(is_staff=True)
         return user
+
+
+class RequestPasswordResetView(APIView):
+    """
+    Request a password reset code.
+    Sends a 4-digit code via SMS to the user's phone number.
+    """
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        from services.sms_service import AfricasTalkingSMSService, format_phone_number
+        from .models import PasswordResetCode
+        import random
+        
+        phone = request.data.get('phone')
+        
+        if not phone:
+            return Response(
+                {'detail': 'Phone number is required.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            formatted_phone = format_phone_number(phone)
+            user = User.objects.filter(phone=formatted_phone, is_active=True).first()
+            if not user:
+                return Response(
+                    {'detail': 'If this phone number exists, you will receive a reset code.'},
+                    status=status.HTTP_200_OK
+                )
+        except Exception:
+            return Response(
+                {'detail': 'Invalid phone number.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        code = str(random.randint(1000, 9999))
+        PasswordResetCode.objects.create(user=user, phone=formatted_phone, code=code)
+        
+        try:
+            sms_service = AfricasTalkingSMSService()
+            message = f"Your Wildwash password reset code is: {code}. This code expires in 15 minutes."
+            sms_service.send_sms(phone_number=formatted_phone, message=message)
+        except Exception as e:
+            print(f"Failed to send SMS: {str(e)}")
+            PasswordResetCode.objects.filter(user=user, code=code).delete()
+            return Response(
+                {'detail': 'Failed to send reset code. Please try again later.'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        
+        return Response(
+            {'detail': 'Reset code sent to your phone number.'},
+            status=status.HTTP_200_OK
+        )
+
+
+class VerifyPasswordResetCodeView(APIView):
+    """
+    Verify the password reset code.
+    """
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        from services.sms_service import format_phone_number
+        from .models import PasswordResetCode
+        
+        phone = request.data.get('phone')
+        code = request.data.get('code')
+        
+        if not phone or not code:
+            return Response(
+                {'detail': 'Phone number and code are required.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            formatted_phone = format_phone_number(phone)
+            user = User.objects.filter(phone=formatted_phone, is_active=True).first()
+            if not user:
+                return Response(
+                    {'detail': 'Invalid phone number.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        except Exception:
+            return Response(
+                {'detail': 'Invalid phone number.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            reset_code = PasswordResetCode.objects.get(
+                user=user, phone=formatted_phone, code=code, is_used=False
+            )
+        except PasswordResetCode.DoesNotExist:
+            return Response(
+                {'detail': 'Invalid reset code.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if reset_code.is_expired:
+            return Response(
+                {'detail': 'Reset code has expired.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        return Response(
+            {'detail': 'Code verified successfully.'},
+            status=status.HTTP_200_OK
+        )
+
+
+class ConfirmPasswordResetView(APIView):
+    """
+    Confirm password reset with code and new password.
+    """
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        from services.sms_service import format_phone_number
+        from .models import PasswordResetCode
+        
+        phone = request.data.get('phone')
+        code = request.data.get('code')
+        password = request.data.get('password')
+        
+        if not all([phone, code, password]):
+            return Response(
+                {'detail': 'Phone number, code, and password are required.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if len(password) < 8:
+            return Response(
+                {'detail': 'Password must be at least 8 characters long.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            formatted_phone = format_phone_number(phone)
+            user = User.objects.filter(phone=formatted_phone, is_active=True).first()
+            if not user:
+                return Response(
+                    {'detail': 'Invalid phone number.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        except Exception:
+            return Response(
+                {'detail': 'Invalid phone number.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            reset_code = PasswordResetCode.objects.get(
+                user=user, phone=formatted_phone, code=code, is_used=False
+            )
+        except PasswordResetCode.DoesNotExist:
+            return Response(
+                {'detail': 'Invalid reset code.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if reset_code.is_expired:
+            return Response(
+                {'detail': 'Reset code has expired.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        user.set_password(password)
+        user.save()
+        reset_code.is_used = True
+        reset_code.save()
+        PasswordResetCode.objects.filter(user=user, is_used=False).delete()
+        
+        return Response(
+            {'detail': 'Password reset successful.'},
+            status=status.HTTP_200_OK
+        )

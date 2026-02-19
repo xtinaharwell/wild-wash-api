@@ -7,7 +7,8 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     UserViewSet, LoginView, ChangePasswordView, 
     get_csrf, RegisterView, UserProfileView,
-    LocationViewSet, StaffViewSet, StaffLoginView, AdminLoginView
+    LocationViewSet, StaffViewSet, StaffLoginView, AdminLoginView,
+    RequestPasswordResetView, VerifyPasswordResetCodeView, ConfirmPasswordResetView
 )
 
 router = DefaultRouter()
@@ -24,6 +25,9 @@ urlpatterns = [
     path('admin/login/', AdminLoginView.as_view(), name='admin-login'),
     path('change-password/', ChangePasswordView.as_view(), name='change-password'),
     path('csrf/', get_csrf, name='csrf'),
+    path('password-reset/request/', RequestPasswordResetView.as_view(), name='password-reset-request'),
+    path('password-reset/verify/', VerifyPasswordResetCodeView.as_view(), name='password-reset-verify'),
+    path('password-reset/confirm/', ConfirmPasswordResetView.as_view(), name='password-reset-confirm'),
 ]
 
 

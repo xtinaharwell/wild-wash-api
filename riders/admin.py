@@ -3,7 +3,7 @@ from .models import RiderProfile, RiderLocation
 
 @admin.register(RiderProfile)
 class RiderProfileAdmin(admin.ModelAdmin):
-    list_display = ("id", "display_name", "user", "phone", "vehicle_type", "vehicle_reg", "is_active", "rating", "completed_jobs")
+    list_display = ("id", "display_name", "phone", "vehicle_type", "vehicle_reg", "is_active")
     search_fields = ("display_name", "user__username", "phone", "vehicle_reg")
     list_filter = ("vehicle_type", "is_active")
     readonly_fields = ("created_at", "updated_at")

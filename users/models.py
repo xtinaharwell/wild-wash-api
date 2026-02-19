@@ -1,6 +1,9 @@
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.core.exceptions import ValidationError
+from django.utils import timezone
+import random
+import string
 
 def format_phone_number(phone_number):
     """
@@ -67,7 +70,7 @@ class User(AbstractUser):
         ("folder", "Folder"),
     )
 
-    phone = models.CharField(max_length=20, unique=True)  # Required phone number - unique to prevent login issues
+    phone = models.CharField(max_length=20, null=True, blank=True)  # Phone number for SMS notifications and login
     service_location = models.ForeignKey(
         Location, 
         on_delete=models.SET_NULL,
@@ -100,3 +103,29 @@ class User(AbstractUser):
 
     def __str__(self):
         return f"{self.username} ({self.role})"
+
+
+class PasswordResetCode(models.Model):
+    """
+    Model to store temporary password reset codes sent via SMS.
+    Codes expire after 15 minutes.
+    """
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='password_resets')
+    phone = models.CharField(max_length=20)
+    code = models.CharField(max_length=4)
+    is_used = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+
+    def save(self, *args, **kwargs):
+        if not self.expires_at:
+            # Code expires in 15 minutes
+            self.expires_at = timezone.now() + timezone.timedelta(minutes=15)
+        super().save(*args, **kwargs)
+
+    @property
+    def is_expired(self):
+        return timezone.now() > self.expires_at
+
+    def __str__(self):
+        return f"Reset code for {self.phone}"
