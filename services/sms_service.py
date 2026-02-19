@@ -309,7 +309,7 @@ class AfricasTalkingSMSService:
             weight_info = f"\nWeight: {order.weight_kg}kg" if order.weight_kg else ""
             
             message = (
-                f"📦 Order Ready for Delivery{rider_info}!\n"
+                f"Order Ready for Delivery{rider_info}!\n"
                 f"Order: {order.code}\n"
                 f"Service: {services}\n"
                 f"Pickup: {order.pickup_address}\n"
@@ -352,7 +352,7 @@ class AfricasTalkingSMSService:
             services = ', '.join([s.name for s in order.services.all()]) if order.services.exists() else 'N/A'
             
             message = (
-                f"✅ Order Confirmed!\n"
+                f"Order Confirmed!\n"
                 f"Order #: {order.code}\n"
                 f"Service: {services}\n"
                 f"Pickup: {order.pickup_address}\n"
@@ -392,7 +392,7 @@ class AfricasTalkingSMSService:
             os.environ['CURL_CA_BUNDLE'] = ''
             
             message = (
-                f"✅ Your Order #{order.code} Delivered!\n"
+                f"Your Order #{order.code} Delivered!\n"
                 f"Thank you for using WildWash.\n"
                 f"Rate us: wildwash.co.ke\n"
                 f"Need anything else? Contact us!"
@@ -439,18 +439,14 @@ class AfricasTalkingSMSService:
             delivery_text = "ready for delivery" if dropoff_address.lower() != 'to be assigned' else "ready for pickup"
             
             message = (
-                f"🎉 Your Order is Ready!\n"
+                f"Your Order is Ready!\n"
                 f"Order #: {order.code}\n"
                 f"Service: {services}\n"
                 f"Pickup: {pickup_address}\n"
                 f"Dropoff: {dropoff_address}\n"
                 f"Items: {quantity}"
                 f"{weight_info}\n"
-                f"─────────────────\n"
-                f"INVOICE\n"
-                f"─────────────────\n"
                 f"Amount: KES {price}\n"
-                f"─────────────────\n"
                 f"Your order is {delivery_text}!\n"
                 f"Thank you for choosing WildWash!"
             )

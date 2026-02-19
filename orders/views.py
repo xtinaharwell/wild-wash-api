@@ -88,7 +88,6 @@ class StaffCreateOrderView(APIView):
                             est_time = order.estimated_delivery.strftime('%d %b, %H:%M') if order.estimated_delivery else 'TBD'
                             customer_message = (
                                 f"WILDWASH SERVICES\n"
-                                f"==================\n"
                                 f"Order Created!\n"
                                 f"Order #: {order.code}\n"
                                 f"Services: {services}\n"
@@ -858,7 +857,6 @@ class OrderListCreateView(generics.ListCreateAPIView):
                     est_time = order.estimated_delivery.strftime('%d %b, %H:%M') if order.estimated_delivery else 'TBD'
                     customer_message = (
                         f"WILDWASH SERVICES\n"
-                        f"==================\n"
                         f"Order Confirmed!\n"
                         f"Order #: {order.code}\n"
                         f"Services: {services}\n"
@@ -890,7 +888,6 @@ class OrderListCreateView(generics.ListCreateAPIView):
                     est_time = order.estimated_delivery.strftime('%d %b, %H:%M') if order.estimated_delivery else 'TBD'
                     admin_message = (
                         f"WILDWASH SERVICES\n"
-                        f"==================\n"
                         f"NEW ORDER ALERT!\n"
                         f"Order #: {order.code}\n"
                         f"Customer: {user_name}\n"
@@ -939,7 +936,6 @@ class OrderListCreateView(generics.ListCreateAPIView):
                         est_time = order.estimated_delivery.strftime('%d %b, %H:%M') if order.estimated_delivery else 'TBD'
                         rider_message = (
                             f"WILDWASH SERVICES\n"
-                            f"==================\n"
                             f"New Order Assigned!\n"
                             f"Order #: {order.code}\n"
                             f"Customer: {user_name}\n"
