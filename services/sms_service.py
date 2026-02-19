@@ -197,7 +197,7 @@ class AfricasTalkingSMSService:
                     
                     try:
                         # Use the patched session directly with the Africa's Talking API
-                        url = "https://api.sandbox.africastalking.com/version1/messaging"
+                        url = "https://api.africastalking.com/version1/messaging"
                         payload = {
                             'username': self.username,
                             'APIkey': self.api_key,
@@ -308,12 +308,15 @@ class AfricasTalkingSMSService:
             services = ', '.join([s.name for s in order.services.all()]) if order.services.exists() else 'N/A'
             weight_info = f"\nWeight: {order.weight_kg}kg" if order.weight_kg else ""
             
+            # Extract clean pickup address
+            clean_pickup = order.pickup_address.split('(contact:')[0].strip() if order.pickup_address else 'N/A'
+            
             rider_url = f"https://www.wildwash.co.ke/rider/orders/{order.code}"
             message = (
                 f"Order Ready for Delivery{rider_info}!\n"
                 f"Order: {order.code}\n"
                 f"Service: {services}\n"
-                f"Pickup: {order.pickup_address}\n"
+                f"Pickup: {clean_pickup}\n"
                 f"Dropoff: {order.dropoff_address}"
                 f"{weight_info}\n"
                 f"Items: {order.quantity or order.items}\n"
@@ -351,17 +354,27 @@ class AfricasTalkingSMSService:
             os.environ['REQUESTS_CA_BUNDLE'] = ''
             os.environ['CURL_CA_BUNDLE'] = ''
             
+            from django.utils import timezone
+            
             services = ', '.join([s.name for s in order.services.all()]) if order.services.exists() else 'N/A'
             order_url = f"https://www.wildwash.co.ke/orders/{order.code}"
+            
+            # Extract clean pickup address and calculate hours for estimated delivery
+            clean_pickup = order.pickup_address.split('(contact:')[0].strip() if order.pickup_address else 'N/A'
+            if order.estimated_delivery:
+                hours_diff = (order.estimated_delivery - timezone.now()).total_seconds() / 3600
+                est_time = f"{int(hours_diff)}hrs" if hours_diff > 0 else 'TBD'
+            else:
+                est_time = 'TBD'
             
             message = (
                 f"Order Confirmed!\n"
                 f"Order #: {order.code}\n"
                 f"Service: {services}\n"
-                f"Pickup: {order.pickup_address}\n"
+                f"Pickup: {clean_pickup}\n"
                 f"Dropoff: {order.dropoff_address}\n"
                 f"Price: KES {order.price or 'TBD'}\n"
-                f"Status: {order.get_status_display()}\n"
+                f"Est. Delivery: {est_time}\n"
                 f"View: {order_url}\n"
                 f"Thank you for choosing WildWash!"
             )
@@ -435,6 +448,9 @@ class AfricasTalkingSMSService:
             
             services = ', '.join([s.name for s in order.services.all()]) if order.services.exists() else 'N/A'
             pickup_address = order.pickup_address if order.pickup_address else 'TBD'
+            # Extract clean pickup address (remove contact info)
+            pickup_address = pickup_address.split('(contact:')[0].strip() if pickup_address else 'TBD'
+            
             dropoff_address = order.dropoff_address if order.dropoff_address else 'TBD'
             quantity = order.quantity or order.items or 'N/A'
             weight_info = f"\nWeight: {order.weight_kg}kg" if order.weight_kg else ""
@@ -486,13 +502,16 @@ def send_order_notification_sms(order, admin_phone_number):
     try:
         sms_service = AfricasTalkingSMSService()
         
+        # Extract clean pickup address
+        clean_pickup = order.pickup_address.split('(contact:')[0].strip() if order.pickup_address else 'N/A'
+        
         # Format the order message
         message = (
             f"New Order Alert!\n"
             f"Order Code: {order.code}\n"
             f"Customer: {order.user.get_full_name() or order.user.username}\n"
             f"Phone: {order.user.phone}\n"
-            f"Pickup: {order.pickup_address}\n"
+            f"Pickup: {clean_pickup}\n"
             f"Dropoff: {order.dropoff_address}\n"
             f"Status: {order.get_status_display()}"
         )

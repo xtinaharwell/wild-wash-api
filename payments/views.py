@@ -1,6 +1,7 @@
 import requests
 import base64
 import logging
+import os
 from datetime import datetime
 from django.conf import settings
 from rest_framework import views, viewsets, permissions, status
@@ -407,36 +408,76 @@ class MpesaSTKPushView(views.APIView):
             return True
         return False
 
+    def _get_mpesa_config(self):
+        """Get M-Pesa configuration based on environment setting."""
+        environment = os.getenv('MPESA_ENVIRONMENT', 'production').lower()
+        
+        if environment == 'sandbox':
+            logger.info("Using SANDBOX M-Pesa environment")
+            return {
+                'consumer_key': os.getenv('MPESA_SANDBOX_CONSUMER_KEY'),
+                'consumer_secret': os.getenv('MPESA_SANDBOX_CONSUMER_SECRET'),
+                'business_shortcode': os.getenv('MPESA_SANDBOX_BUSINESS_SHORTCODE', '174379'),
+                'passkey': os.getenv('MPESA_SANDBOX_PASSKEY'),
+                'oauth_url': 'https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials',
+                'stk_push_url': 'https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest'
+            }
+        else:
+            logger.info("Using PRODUCTION M-Pesa environment")
+            return {
+                'consumer_key': settings.MPESA_CONSUMER_KEY,
+                'consumer_secret': settings.MPESA_CONSUMER_SECRET,
+                'business_shortcode': settings.MPESA_BUSINESS_SHORTCODE,
+                'passkey': settings.MPESA_PASSKEY,
+                'oauth_url': 'https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials',
+                'stk_push_url': 'https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest'
+            }
+
     def _get_access_token(self):
         """Get access token from Safaricom Daraja API."""
-        url = "https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials"
+        config = self._get_mpesa_config()
+        url = config['oauth_url']
         
         logger.info(f"Requesting access token from {url}")
-        logger.debug(f"Using Consumer Key: {settings.MPESA_CONSUMER_KEY[:10]}...")
+        logger.info(f"Consumer Key (first 20 chars): {config['consumer_key'][:20] if config['consumer_key'] else 'NOT SET'}")
         
         try:
             response = requests.get(
                 url,
-                auth=(settings.MPESA_CONSUMER_KEY, settings.MPESA_CONSUMER_SECRET),
+                auth=(config['consumer_key'], config['consumer_secret']),
                 timeout=10
             )
+            logger.info(f"OAuth Response status: {response.status_code}")
+            logger.info(f"OAuth Response body: {response.text}")
+            
             response.raise_for_status()
             token = response.json()['access_token']
-            logger.info(f"Access token obtained successfully")
+            logger.info(f"✓ Access token obtained successfully (length: {len(token)})")
+            logger.info(f"Access token (first 20 chars): {token[:20]}...")
             return token
         except requests.exceptions.RequestException as e:
-            logger.error(f"Failed to get access token: {str(e)}", exc_info=True)
+            # Log detailed response information
+            if hasattr(e, 'response') and e.response is not None:
+                logger.error(f"Failed to get access token: HTTP {e.response.status_code}")
+                logger.error(f"Response body: {e.response.text}")
+                logger.error(f"Response headers: {dict(e.response.headers)}")
+            else:
+                logger.error(f"Failed to get access token: {str(e)}")
+            logger.error(f"Credentials issue check:")
+            logger.error(f"  - Consumer Key: {repr(config['consumer_key'][:50] if config['consumer_key'] else 'NOT SET')}...")
+            logger.error(f"  - Consumer Secret: {repr(config['consumer_secret'][:20] if config['consumer_secret'] else 'NOT SET')}...")
             raise Exception(f'Failed to get access token: {str(e)}')
 
     def _initiate_stk_push(self, access_token, amount, phone, order_id):
         """Send STK Push request to Daraja API."""
-        url = "https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest"
+        config = self._get_mpesa_config()
+        url = config['stk_push_url']
         
         # Generate timestamp and password
         timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
         password = self._encode_password(
-            settings.MPESA_BUSINESS_SHORTCODE,
-            settings.MPESA_PASSKEY,
+            config['business_shortcode'],
+            config['passkey'],
             timestamp
         )
         
@@ -449,13 +490,13 @@ class MpesaSTKPushView(views.APIView):
         }
         
         payload = {
-            "BusinessShortCode": settings.MPESA_BUSINESS_SHORTCODE,
+            "BusinessShortCode": config['business_shortcode'],
             "Password": password,
             "Timestamp": timestamp,
             "TransactionType": "CustomerPayBillOnline",
             "Amount": int(amount),
             "PartyA": formatted_phone,
-            "PartyB": settings.MPESA_BUSINESS_SHORTCODE,
+            "PartyB": config['business_shortcode'],
             "PhoneNumber": formatted_phone,
             "CallBackURL": settings.MPESA_CALLBACK_URL,
             "AccountReference": order_id,
@@ -463,18 +504,30 @@ class MpesaSTKPushView(views.APIView):
         }
         
         logger.info(f"Initiating STK Push to {formatted_phone} for amount {amount} KES")
-        logger.debug(f"STK Push payload: {payload}")
+        logger.info(f"STK Push URL: {url}")
+        logger.info(f"STK Push Authorization header: Bearer {access_token[:20]}...")
+        logger.info(f"STK Push payload: {payload}")
         
         try:
             response = requests.post(url, json=payload, headers=headers, timeout=10)
-            logger.debug(f"STK Push response status: {response.status_code}")
-            logger.debug(f"STK Push response body: {response.text}")
+            logger.info(f"STK Push response status: {response.status_code}")
+            logger.info(f"STK Push response body: {response.text}")
+            logger.info(f"STK Push response headers: {dict(response.headers)}")
+            
+            if response.status_code != 200:
+                logger.error(f"STK Push returned non-200 status: {response.status_code}")
+                logger.error(f"Full response: {response.text}")
+            
             response.raise_for_status()
             result = response.json()
             logger.info(f"STK Push successful. CheckoutRequestID: {result.get('CheckoutRequestID')}")
             return result
         except requests.exceptions.RequestException as e:
-            logger.error(f"STK push failed: {str(e)}", exc_info=True)
+            logger.error(f"STK push request exception: {str(e)}")
+            if hasattr(e, 'response') and e.response is not None:
+                logger.error(f"Response status: {e.response.status_code}")
+                logger.error(f"Response text: {e.response.text}")
+                logger.error(f"Response content type: {e.response.headers.get('content-type')}")
             raise Exception(f'STK push failed: {str(e)}')
 
     @staticmethod

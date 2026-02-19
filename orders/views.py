@@ -81,20 +81,28 @@ class StaffCreateOrderView(APIView):
                     if user_phone and str(user_phone).strip():
                         try:
                             from services.sms_service import format_phone_number
+                            from django.utils import timezone
                             sms_service = AfricasTalkingSMSService()
                             # Format phone number to international format
                             formatted_phone = format_phone_number(user_phone)
                             order_url = f"https://www.wildwash.co.ke/orders/{order.code}"
-                            est_time = order.estimated_delivery.strftime('%d %b, %H:%M') if order.estimated_delivery else 'TBD'
+                            
+                            # Extract clean pickup address and calculate hours for estimated delivery
+                            clean_pickup = order.pickup_address.split('(contact:')[0].strip() if order.pickup_address else 'N/A'
+                            if order.estimated_delivery:
+                                hours_diff = (order.estimated_delivery - timezone.now()).total_seconds() / 3600
+                                est_time = f"{int(hours_diff)}hrs" if hours_diff > 0 else 'TBD'
+                            else:
+                                est_time = 'TBD'
+                            
                             customer_message = (
                                 f"WILDWASH SERVICES\n"
                                 f"Order Created!\n"
                                 f"Order #: {order.code}\n"
                                 f"Services: {services}\n"
-                                f"Pickup: {order.pickup_address}\n"
+                                f"Pickup: {clean_pickup}\n"
                                 f"Price: KES {order.price or 'TBD'}\n"
                                 f"Est. Delivery: {est_time}\n"
-                                f"Created by: {request.user.username}\n"
                                 f"View: {order_url}\n"
                                 f"We'll update you when it's ready!"
                             )
@@ -115,18 +123,29 @@ class StaffCreateOrderView(APIView):
                     # 2. Send SMS to ADMIN
                     if admin_phone:
                         try:
+                            from django.utils import timezone
                             sms_service = AfricasTalkingSMSService()
                             order_url = f"https://www.wildwash.co.ke/orders/{order.code}"
+                            
+                            # Extract clean pickup address and calculate hours for estimated delivery
+                            clean_pickup = order.pickup_address.split('(contact:')[0].strip() if order.pickup_address else 'N/A'
+                            if order.estimated_delivery:
+                                hours_diff = (order.estimated_delivery - timezone.now()).total_seconds() / 3600
+                                est_time = f"{int(hours_diff)}hrs" if hours_diff > 0 else 'TBD'
+                            else:
+                                est_time = 'TBD'
+                            
                             admin_message = (
                                 f"MANUAL ORDER CREATED!\n"
                                 f"Order #: {order.code}\n"
                                 f"Customer: {user_name}\n"
                                 f"Phone: {user_phone or 'N/A'}\n"
-                                f"Pickup: {order.pickup_address}\n"
+                                f"Pickup: {clean_pickup}\n"
                                 f"Dropoff: {order.dropoff_address}\n"
                                 f"Services: {services}\n"
                                 f"Items: {order.items}\n"
                                 f"Price: KES {order.price or 'TBD'}\n"
+                                f"Est. Delivery: {est_time}\n"
                                 f"Created By: {request.user.username}\n"
                                 f"Status: {order.get_actual_status_display()}\n"
                                 f"Manage: {order_url}"
@@ -855,17 +874,26 @@ class OrderListCreateView(generics.ListCreateAPIView):
             if user_phone and str(user_phone).strip():
                 try:
                     from services.sms_service import format_phone_number
+                    from django.utils import timezone
                     sms_service = AfricasTalkingSMSService()
                     # Format phone number to international format
                     formatted_phone = format_phone_number(user_phone)
                     order_url = f"https://www.wildwash.co.ke/orders/{order.code}"
-                    est_time = order.estimated_delivery.strftime('%d %b, %H:%M') if order.estimated_delivery else 'TBD'
+                    
+                    # Extract clean pickup address and calculate hours for estimated delivery
+                    clean_pickup = order.pickup_address.split('(contact:')[0].strip() if order.pickup_address else 'N/A'
+                    if order.estimated_delivery:
+                        hours_diff = (order.estimated_delivery - timezone.now()).total_seconds() / 3600
+                        est_time = f"{int(hours_diff)}hrs" if hours_diff > 0 else 'TBD'
+                    else:
+                        est_time = 'TBD'
+                    
                     customer_message = (
                         f"WILDWASH SERVICES\n"
                         f"Order Confirmed!\n"
                         f"Order #: {order.code}\n"
                         f"Services: {services}\n"
-                        f"Pickup: {order.pickup_address}\n"
+                        f"Pickup: {clean_pickup}\n"
                         f"Price: KES {order.price or 'TBD'}\n"
                         f"Est. Delivery: {est_time}\n"
                         f"View: {order_url}\n"
@@ -888,16 +916,27 @@ class OrderListCreateView(generics.ListCreateAPIView):
             # 2. Send SMS to ADMIN
             if admin_phone:
                 try:
+                    from django.utils import timezone
                     sms_service = AfricasTalkingSMSService()
                     admin_url = f"https://www.wildwash.co.ke/orders/{order.code}"
-                    est_time = order.estimated_delivery.strftime('%d %b, %H:%M') if order.estimated_delivery else 'TBD'
+                    
+                    # Extract clean pickup address (remove contact info)
+                    clean_pickup = order.pickup_address.split('(contact:')[0].strip() if order.pickup_address else 'N/A'
+                    
+                    # Calculate hours for estimated delivery
+                    if order.estimated_delivery:
+                        hours_diff = (order.estimated_delivery - timezone.now()).total_seconds() / 3600
+                        est_time = f"{int(hours_diff)}hrs" if hours_diff > 0 else 'TBD'
+                    else:
+                        est_time = 'TBD'
+                    
                     admin_message = (
                         f"WILDWASH SERVICES\n"
-                        f"NEW ORDER ALERT!\n"
+                        f"New Online Order Assigned!\n"
                         f"Order #: {order.code}\n"
                         f"Customer: {user_name}\n"
                         f"Phone: {user_phone or 'N/A'}\n"
-                        f"Pickup: {order.pickup_address}\n"
+                        f"Pickup: {clean_pickup}\n"
                         f"Dropoff: {order.dropoff_address}\n"
                         f"Services: {services}\n"
                         f"Items: {order.items}\n"
@@ -934,21 +973,31 @@ class OrderListCreateView(generics.ListCreateAPIView):
                 
                 if rider_phone and str(rider_phone).strip():
                     try:
+                        from django.utils import timezone
                         print(f"[DEBUG] Attempting to send SMS to rider {order.rider.username} at {rider_phone}")
                         sms_service = AfricasTalkingSMSService()
                         rider_url = f"https://www.wildwash.co.ke/rider/orders/{order.code}"
-                        est_time = order.estimated_delivery.strftime('%d %b, %H:%M') if order.estimated_delivery else 'TBD'
+                        
+                        # Extract clean pickup address and calculate hours for estimated delivery
+                        clean_pickup = order.pickup_address.split('(contact:')[0].strip() if order.pickup_address else 'N/A'
+                        if order.estimated_delivery:
+                            hours_diff = (order.estimated_delivery - timezone.now()).total_seconds() / 3600
+                            est_time = f"{int(hours_diff)}hrs" if hours_diff > 0 else 'TBD'
+                        else:
+                            est_time = 'TBD'
+                        
                         rider_name = order.rider.get_full_name() or order.rider.username if order.rider else 'Rider'
                         rider_message = (
                             f"WILDWASH SERVICES\n"
                             f"New Order Assigned!\n"
                             f"Order #: {order.code}\n"
-                            f"Rider: {rider_name}\n"
                             f"Customer: {user_name}\n"
-                            f"Pickup: {order.pickup_address}\n"
+                            f"Phone: {user_phone or 'N/A'}\n"
+                            f"Pickup: {clean_pickup}\n"
                             f"Dropoff: {order.dropoff_address}\n"
                             f"Services: {services}\n"
                             f"Items: {order.items}\n"
+                            f"Price: KES {order.price or 'TBD'}\n"
                             f"Est. Delivery: {est_time}\n"
                             f"Accept: {rider_url}"
                         )
@@ -1096,13 +1145,16 @@ class RequestDeliveryView(APIView):
                     customer_name = order.user.get_full_name() or order.user.username if order.user else 'Customer'
                     customer_phone = order.user.phone if order.user and order.user.phone else 'N/A'  # type: ignore
                     
+                    # Extract clean pickup address
+                    clean_pickup = order.pickup_address.split('(contact:')[0].strip() if order.pickup_address else 'N/A'
+                    
                     rider_url = f"https://www.wildwash.co.ke/rider/orders/{order.code}"
                     rider_message = (
-                        f"🚴 Delivery Request!\n"
+                        f"Delivery Request!\n"
                         f"Order #: {order.code}\n"
                         f"Customer: {customer_name}\n"
                         f"Phone: {customer_phone}\n"
-                        f"Pickup: {order.pickup_address}\n"
+                        f"Pickup: {clean_pickup}\n"
                         f"Dropoff: {order.dropoff_address}\n"
                         f"Service: {services}\n"
                         f"Items: {order.quantity or order.items}\n"
