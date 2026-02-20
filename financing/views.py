@@ -5,14 +5,17 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from django.utils import timezone
 from django.db.models import Q
-from .models import LoanApplication, LoanCollateral, LoanGuarantor, LoanRepayment
+from .models import LoanApplication, LoanCollateral, LoanGuarantor, LoanRepayment, Investment
 from .serializers import (
     LoanApplicationDetailSerializer,
     LoanApplicationListSerializer,
     CreateLoanApplicationSerializer,
     LoanCollateralSerializer,
     LoanGuarantorSerializer,
-    LoanRepaymentSerializer
+    LoanRepaymentSerializer,
+    InvestmentListSerializer,
+    InvestmentDetailSerializer,
+    CreateInvestmentSerializer
 )
 
 
@@ -350,4 +353,167 @@ def create_loan_request(request):
         return Response(
             {'error': str(e)},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+class InvestmentViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing investments.
+    
+    - Users can view their own investments
+    - Users can create new investments
+    - Admins can view all investments
+    """
+    queryset = Investment.objects.all()
+    permission_classes = [IsAuthenticated]
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['user__username', 'user__email', 'id', 'plan_type']
+    ordering_fields = ['created_at', 'amount', 'status', 'maturity_date']
+    ordering = ['-created_at']
+    
+    def get_queryset(self):
+        """Filter based on user role"""
+        user = self.request.user
+        
+        # Admins see all investments
+        if user.is_staff or user.is_superuser:
+            return Investment.objects.all()
+        
+        # Regular users see only their own
+        return Investment.objects.filter(user=user)
+    
+    def get_serializer_class(self):
+        """Use different serializers based on action"""
+        if self.action == 'create':
+            return CreateInvestmentSerializer
+        elif self.action == 'list':
+            return InvestmentListSerializer
+        return InvestmentDetailSerializer
+    
+    def create(self, request, *args, **kwargs):
+        """Create a new investment"""
+        serializer = self.get_serializer(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        investment = serializer.save()
+        
+        # Return detailed serializer
+        return Response(
+            InvestmentDetailSerializer(investment).data,
+            status=status.HTTP_201_CREATED
+        )
+    
+    @action(detail=False, methods=['get'])
+    def my_investments(self, request):
+        """Get all investments for the current user"""
+        investments = self.get_queryset()
+        serializer = self.get_serializer(investments, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'])
+    def summary(self, request):
+        """Get investment summary for the current user"""
+        user = request.user
+        investments = Investment.objects.filter(user=user)
+        
+        total_invested = sum(int(inv.amount) for inv in investments)
+        active_investments = investments.filter(status='active').count()
+        total_expected_returns = sum(float(inv.expected_annual_return) for inv in investments)
+        total_received_returns = sum(float(inv.total_received_returns) for inv in investments)
+        
+        return Response({
+            'total_invested': total_invested,
+            'active_investments': active_investments,
+            'total_investments': investments.count(),
+            'total_expected_returns': round(total_expected_returns, 2),
+            'total_received_returns': round(total_received_returns, 2),
+            'pending_investments': investments.filter(status='pending').count(),
+            'completed_investments': investments.filter(status='completed').count(),
+        })
+    
+    @action(detail=True, methods=['post'], permission_classes=[IsAdminUser])
+    def activate(self, request, pk=None):
+        """Activate a pending investment"""
+        investment = self.get_object()
+        
+        if investment.status != 'pending':
+            return Response(
+                {'error': f'Cannot activate investment with status {investment.status}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        investment.status = 'active'
+        investment.payment_confirmed_at = timezone.now()
+        investment.save()
+        
+        return Response(
+            InvestmentDetailSerializer(investment).data,
+            status=status.HTTP_200_OK
+        )
+    
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def confirm_payment(self, request, pk=None):
+        """Confirm payment for an investment"""
+        investment = self.get_object()
+        
+        # Check if user owns this investment
+        if investment.user != request.user and not request.user.is_staff:
+            return Response(
+                {'error': 'You do not have permission to update this investment'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        if investment.status != 'pending':
+            return Response(
+                {'error': f'Cannot confirm payment for investment with status {investment.status}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        investment.status = 'active'
+        investment.payment_confirmed_at = timezone.now()
+        investment.payment_method = request.data.get('payment_method', 'mpesa')
+        investment.transaction_id = request.data.get('transaction_id', '')
+        investment.save()
+        
+        return Response(
+            InvestmentDetailSerializer(investment).data,
+            status=status.HTTP_200_OK
+        )
+    
+    @action(detail=True, methods=['post'], permission_classes=[IsAdminUser])
+    def complete(self, request, pk=None):
+        """Complete an investment at maturity"""
+        investment = self.get_object()
+        
+        if investment.status != 'active':
+            return Response(
+                {'error': f'Cannot complete investment with status {investment.status}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        investment.status = 'completed'
+        investment.total_received_returns = investment.expected_annual_return
+        investment.save()
+        
+        return Response(
+            InvestmentDetailSerializer(investment).data,
+            status=status.HTTP_200_OK
+        )
+    
+    @action(detail=True, methods=['post'], permission_classes=[IsAdminUser])
+    def cancel(self, request, pk=None):
+        """Cancel an investment"""
+        investment = self.get_object()
+        
+        if investment.status in ['completed', 'cancelled']:
+            return Response(
+                {'error': f'Cannot cancel investment with status {investment.status}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        investment.status = 'cancelled'
+        investment.save()
+        
+        return Response(
+            InvestmentDetailSerializer(investment).data,
+            status=status.HTTP_200_OK
         )

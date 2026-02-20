@@ -188,3 +188,94 @@ class LoanRepayment(models.Model):
     
     def __str__(self):
         return f"Repayment {self.id} - {self.amount} - {self.status}"
+
+
+class Investment(models.Model):
+    """
+    Stores user investments and tracks expected returns
+    """
+    
+    PLAN_TYPE_CHOICES = [
+        ('starter', 'Starter'),
+        ('professional', 'Professional'),
+        ('enterprise', 'Enterprise'),
+    ]
+    
+    STATUS_CHOICES = [
+        ('pending', 'Pending Payment'),
+        ('active', 'Active'),
+        ('completed', 'Completed'),
+        ('cancelled', 'Cancelled'),
+    ]
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='investments'
+    )
+    
+    # Investment details
+    plan_type = models.CharField(max_length=20, choices=PLAN_TYPE_CHOICES)
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    
+    # Return calculations
+    annual_return_percentage = models.DecimalField(max_digits=5, decimal_places=2)  # e.g., 15.00 for 15%
+    expected_annual_return = models.DecimalField(max_digits=12, decimal_places=2)
+    expected_monthly_return = models.DecimalField(max_digits=12, decimal_places=2)
+    total_received_returns = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    
+    # Duration details
+    lockup_period_months = models.IntegerField()  # 12, 18, 24, or 36 months
+    investment_date = models.DateTimeField(auto_now_add=True)
+    maturity_date = models.DateTimeField()
+    
+    # Payment tracking
+    payment_method = models.CharField(max_length=50, null=True, blank=True)  # mpesa, bank_transfer, etc.
+    transaction_id = models.CharField(max_length=255, unique=True, null=True, blank=True)
+    payment_confirmed_at = models.DateTimeField(null=True, blank=True)
+    
+    # Return payouts
+    next_payout_date = models.DateTimeField(null=True, blank=True)
+    last_payout_date = models.DateTimeField(null=True, blank=True)
+    payout_frequency = models.CharField(max_length=20, default='monthly')  # monthly, bi-weekly, weekly
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    def calculate_maturity_date(self):
+        """Calculate maturity date based on investment date and lockup period"""
+        from datetime import timedelta
+        return timezone.now() + timedelta(days=self.lockup_period_months * 30)
+    
+    def calculate_expected_returns(self):
+        """Calculate expected annual and monthly returns"""
+        annual = (self.amount * self.annual_return_percentage) / Decimal('100')
+        monthly = annual / Decimal('12')
+        self.expected_annual_return = annual
+        self.expected_monthly_return = monthly
+        return annual, monthly
+    
+    def save(self, *args, **kwargs):
+        if not self.maturity_date:  # Only on creation
+            self.maturity_date = self.calculate_maturity_date()
+            self.calculate_expected_returns()
+            # Set next payout date based on plan
+            if self.plan_type == 'starter':
+                freq_days = 30
+                self.payout_frequency = 'monthly'
+            elif self.plan_type == 'professional':
+                freq_days = 14
+                self.payout_frequency = 'bi-weekly'
+            else:  # enterprise
+                freq_days = 7
+                self.payout_frequency = 'weekly'
+            
+            from datetime import timedelta
+            self.next_payout_date = timezone.now() + timedelta(days=freq_days)
+        
+        super().save(*args, **kwargs)
+    
+    def __str__(self):
+        return f"Investment {self.id} - {self.user.username} - {self.plan_type} - KSh {self.amount}"
