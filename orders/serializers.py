@@ -253,6 +253,11 @@ class OrderListSerializer(serializers.ModelSerializer):
     dropoff_location = serializers.SerializerMethodField()
     timeline = serializers.SerializerMethodField()
     order_items = serializers.SerializerMethodField()
+    is_paid = serializers.SerializerMethodField()
+    
+    def get_is_paid(self, obj):
+        """Return whether this order has been paid"""
+        return obj.is_paid()
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -435,6 +440,7 @@ class OrderListSerializer(serializers.ModelSerializer):
             "created_by",
             "timeline",
             "order_items",
+            "is_paid",
             # Manual order fields
             "order_type",
             "drop_off_type",

@@ -187,6 +187,14 @@ class Order(models.Model):
             return self.get_status_display()
         return self.get_status_display()
 
+    def is_paid(self):
+        """Check if this order has a successful payment"""
+        from payments.models import Payment
+        return Payment.objects.filter(
+            order_id=self.id,
+            status=Payment.STATUS_SUCCESS
+        ).exists()
+
     def __str__(self):
         return f"Order #{self.id} - {self.user.username if self.user else 'Guest'}"
 
